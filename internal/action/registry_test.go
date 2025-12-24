@@ -5,57 +5,54 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/firebase/genkit/go/ai"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
 )
 
-// TestMemoryAdd 测试 Memory.Add 完整流程（使用 mock）
+// TestMemoryAdd 测试 Memory.Add 完整流程（使用 MockPlugin）
 func TestMemoryAdd(t *testing.T) {
 	ctx := context.Background()
+	helper := NewTestHelper(ctx)
+	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
 
-	// 创建 mock LLM
-	mockLLM := NewMockLLMClient()
-	mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-		switch promptName {
-		case "topic":
-			result := TopicResult{Topic: "个人介绍"}
-			data, _ := json.Marshal(result)
-			return json.Unmarshal(data, output)
-		case "extraction":
-			result := ExtractionResult{
-				Entities: []ExtractedEntity{
-					{Name: "小明", Type: "person", Description: "用户"},
-					{Name: "北京", Type: "place", Description: "城市"},
+	// 使用计数器来根据调用返回不同结果
+	callCount := 0
+	helper.MockPlugin.SetModelResponse("doubao-pro-32k", func(ctx context.Context, req *ai.ModelRequest) (*ai.ModelResponse, error) {
+		callCount++
+		var response map[string]any
+		if callCount <= 2 {
+			// Topic 生成
+			response = map[string]any{"topic": "个人介绍"}
+		} else {
+			// Extraction 生成
+			response = map[string]any{
+				"entities": []map[string]any{
+					{"name": "小明", "type": "person", "description": "用户"},
+					{"name": "北京", "type": "place", "description": "城市"},
 				},
-				Relations: []ExtractedRelation{
-					{Subject: "小明", Predicate: "住在", Object: "北京", Fact: "小明住在北京"},
+				"relations": []map[string]any{
+					{"subject": "小明", "predicate": "住在", "object": "北京", "fact": "小明住在北京"},
 				},
 			}
-			data, _ := json.Marshal(result)
-			return json.Unmarshal(data, output)
-		case "summary":
-			result := map[string]any{
-				"summary":      "用户自我介绍",
-				"significance": 5,
-			}
-			data, _ := json.Marshal(result)
-			return json.Unmarshal(data, output)
 		}
-		return nil
-	}
+		data, _ := json.Marshal(response)
+		return &ai.ModelResponse{
+			Request: req,
+			Message: ai.NewModelTextMessage(string(data)),
+		}, nil
+	})
 
 	// 创建 mock 存储
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
 
 	// 创建 actions 并注入 mock
-	episodeAction := NewEpisodeStorageAction()
-	episodeAction.WithLLMClient(mockLLM)
+	episodeAction := helper.NewEpisodeStorageAction()
 	episodeAction.WithVectorStore(mockVector)
 
-	extractionAction := NewExtractionAction()
-	extractionAction.WithLLMClient(mockLLM)
+	extractionAction := helper.NewExtractionAction()
 	extractionAction.WithStores(mockVector, mockGraph)
 
 	c := domain.NewAddContext(ctx, "agent_test", "user_test", "session_test")

@@ -5,37 +5,33 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/firebase/genkit/go/ai"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
 	"github.com/Zereker/memory/pkg/storage"
 )
 
-// Note: These tests use MockLLMClient to mock the LLM layer.
+// Note: These tests use MockPlugin to mock the LLM layer via genkit.
 // This tests the complete action logic without external service dependencies.
 
 // TestIntegration_EpisodeAction_EndToEnd 测试 Episode Action 的完整流程
 func TestIntegration_EpisodeAction_EndToEnd(t *testing.T) {
-	// 创建 mock LLM 客户端
-	mockLLM := NewMockLLMClient()
-	mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-		if promptName == "topic" {
-			result := TopicResult{Topic: "工作"}
-			data, _ := json.Marshal(result)
-			return json.Unmarshal(data, output)
-		}
-		return nil
-	}
+	ctx := context.Background()
+	helper := NewTestHelper(ctx)
+	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+	helper.SetModelJSON(map[string]any{
+		"topic": "工作",
+	})
 
 	// 创建 mock 存储
 	mockStore := NewMockVectorStore()
 
 	t.Run("episode action generates and stores episodes", func(t *testing.T) {
-		action := NewEpisodeStorageAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewEpisodeStorageAction()
 		action.WithVectorStore(mockStore)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Messages = domain.Messages{
 			{Role: domain.RoleUser, Name: "张三", Content: "我在北京做产品经理"},
 			{Role: domain.RoleAssistant, Name: "AI", Content: "产品经理是个很有挑战的职业！"},
@@ -58,11 +54,11 @@ func TestIntegration_EpisodeAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("episode action handles empty messages", func(t *testing.T) {
-		action := NewEpisodeStorageAction()
-		action.BaseAction.WithLLMClient(mockLLM)
-		action.WithVectorStore(mockStore)
+		mockStore2 := NewMockVectorStore()
+		action := helper.NewEpisodeStorageAction()
+		action.WithVectorStore(mockStore2)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Messages = domain.Messages{} // empty
 
 		chain := domain.NewActionChain()
@@ -77,34 +73,27 @@ func TestIntegration_EpisodeAction_EndToEnd(t *testing.T) {
 // TestIntegration_ExtractionAction_EndToEnd 测试 Extraction Action 的完整流程
 func TestIntegration_ExtractionAction_EndToEnd(t *testing.T) {
 	t.Run("extraction action extracts entities and edges", func(t *testing.T) {
-		// 创建 mock LLM 客户端
-		mockLLM := NewMockLLMClient()
-		mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-			if promptName == "extraction" {
-				result := ExtractionResult{
-					Entities: []ExtractedEntity{
-						{Name: "张三", Type: "person", Description: "用户"},
-						{Name: "北京", Type: "place", Description: "城市"},
-					},
-					Relations: []ExtractedRelation{
-						{Subject: "张三", Predicate: "住在", Object: "北京", Fact: "张三住在北京"},
-					},
-				}
-				data, _ := json.Marshal(result)
-				return json.Unmarshal(data, output)
-			}
-			return nil
-		}
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+		helper.SetModelJSON(map[string]any{
+			"entities": []map[string]any{
+				{"name": "张三", "type": "person", "description": "用户"},
+				{"name": "北京", "type": "place", "description": "城市"},
+			},
+			"relations": []map[string]any{
+				{"subject": "张三", "predicate": "住在", "object": "北京", "fact": "张三住在北京"},
+			},
+		})
 
 		// 创建 mock 存储
 		mockVector := NewMockVectorStore()
 		mockGraph := NewMockGraphStore()
 
-		action := NewExtractionAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewExtractionAction()
 		action.WithStores(mockVector, mockGraph)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Messages = domain.Messages{
 			{Role: domain.RoleUser, Name: "张三", Content: "我住在北京"},
 		}
@@ -132,12 +121,13 @@ func TestIntegration_ExtractionAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("extraction action handles empty messages", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
-		action := NewExtractionAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+
+		action := helper.NewExtractionAction()
 		action.WithStores(nil, nil)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Messages = domain.Messages{}
 
 		chain := domain.NewActionChain()
@@ -150,32 +140,26 @@ func TestIntegration_ExtractionAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("extraction action skips relations with unknown entities", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
-		mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-			if promptName == "extraction" {
-				result := ExtractionResult{
-					Entities: []ExtractedEntity{
-						{Name: "张三", Type: "person", Description: "用户"},
-					},
-					Relations: []ExtractedRelation{
-						// 引用不存在的实体 "上海"
-						{Subject: "张三", Predicate: "住在", Object: "上海", Fact: "张三住在上海"},
-					},
-				}
-				data, _ := json.Marshal(result)
-				return json.Unmarshal(data, output)
-			}
-			return nil
-		}
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+		helper.SetModelJSON(map[string]any{
+			"entities": []map[string]any{
+				{"name": "张三", "type": "person", "description": "用户"},
+			},
+			"relations": []map[string]any{
+				// 引用不存在的实体 "上海"
+				{"subject": "张三", "predicate": "住在", "object": "上海", "fact": "张三住在上海"},
+			},
+		})
 
 		mockVector := NewMockVectorStore()
 		mockGraph := NewMockGraphStore()
 
-		action := NewExtractionAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewExtractionAction()
 		action.WithStores(mockVector, mockGraph)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Messages = domain.Messages{
 			{Role: domain.RoleUser, Name: "张三", Content: "我住在上海"},
 		}
@@ -193,17 +177,12 @@ func TestIntegration_ExtractionAction_EndToEnd(t *testing.T) {
 // TestIntegration_SummaryAction_EndToEnd 测试 Summary Action 的完整流程
 func TestIntegration_SummaryAction_EndToEnd(t *testing.T) {
 	t.Run("summary action with topic change", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
-		mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-			if promptName == "summary" {
-				result := map[string]any{
-					"content": "用户张三住在北京，是一名产品经理",
-				}
-				data, _ := json.Marshal(result)
-				return json.Unmarshal(data, output)
-			}
-			return nil
-		}
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+		helper.SetModelJSON(map[string]any{
+			"content": "用户张三住在北京，是一名产品经理",
+		})
 
 		// 创建 mock store 返回历史 episode
 		mockStore := NewMockVectorStore()
@@ -231,11 +210,10 @@ func TestIntegration_SummaryAction_EndToEnd(t *testing.T) {
 			}, nil
 		}
 
-		action := NewSummaryAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewSummaryAction()
 		action.WithStore(mockStore)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.TopicThreshold = 0.8
 		c.Episodes = []domain.Episode{
 			{
@@ -256,12 +234,13 @@ func TestIntegration_SummaryAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("summary action skips when no user episodes", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
-		action := NewSummaryAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+
+		action := helper.NewSummaryAction()
 		action.WithStore(nil)
 
-		c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+		c := domain.NewAddContext(ctx, "agent", "user", "session")
 		c.Episodes = []domain.Episode{
 			{
 				ID:   "ep_1",
@@ -281,7 +260,10 @@ func TestIntegration_SummaryAction_EndToEnd(t *testing.T) {
 // TestIntegration_RetrievalAction_EndToEnd 测试 Retrieval Action 的完整流程
 func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 	t.Run("retrieval action retrieves all memory types", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+
 		mockVector := NewMockVectorStore()
 		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
 			docType, _ := query.Filters["type"].(string)
@@ -308,8 +290,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 
 		mockGraph := NewMockGraphStore()
 
-		action := NewRetrievalAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewRetrievalAction()
 		action.WithStores(mockVector, mockGraph)
 
 		req := &domain.RetrieveRequest{
@@ -317,7 +298,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 			UserID:  "user",
 			Query:   "张三住在哪里",
 		}
-		c := domain.NewRecallContext(context.Background(), req)
+		c := domain.NewRecallContext(ctx, req)
 
 		chain := domain.NewRecallChain()
 		chain.Use(action)
@@ -330,12 +311,13 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("retrieval action handles empty query", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+
 		mockVector := NewMockVectorStore()
 		mockGraph := NewMockGraphStore()
 
-		action := NewRetrievalAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewRetrievalAction()
 		action.WithStores(mockVector, mockGraph)
 
 		req := &domain.RetrieveRequest{
@@ -343,7 +325,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 			UserID:  "user",
 			Query:   "", // 空查询
 		}
-		c := domain.NewRecallContext(context.Background(), req)
+		c := domain.NewRecallContext(ctx, req)
 
 		chain := domain.NewRecallChain()
 		chain.Use(action)
@@ -354,7 +336,10 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("retrieval action with graph traversal", func(t *testing.T) {
-		mockLLM := NewMockLLMClient()
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+
 		mockVector := NewMockVectorStore()
 		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
 			docType, _ := query.Filters["type"].(string)
@@ -374,8 +359,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 			}, nil
 		}
 
-		action := NewRetrievalAction()
-		action.BaseAction.WithLLMClient(mockLLM)
+		action := helper.NewRetrievalAction()
 		action.WithStores(mockVector, mockGraph)
 
 		req := &domain.RetrieveRequest{
@@ -386,7 +370,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 				MaxHops: 2, // 启用图遍历
 			},
 		}
-		c := domain.NewRecallContext(context.Background(), req)
+		c := domain.NewRecallContext(ctx, req)
 
 		chain := domain.NewRecallChain()
 		chain.Use(action)
@@ -401,44 +385,49 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 // TestIntegration_FullPipeline 测试完整的 Add 处理流程
 func TestIntegration_FullPipeline(t *testing.T) {
 	t.Run("full add pipeline: episode -> extraction", func(t *testing.T) {
-		// 创建 mock LLM 客户端
-		mockLLM := NewMockLLMClient()
-		mockLLM.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-			switch promptName {
-			case "topic":
-				result := TopicResult{Topic: "个人介绍"}
-				data, _ := json.Marshal(result)
-				return json.Unmarshal(data, output)
-			case "extraction":
-				result := ExtractionResult{
-					Entities: []ExtractedEntity{
-						{Name: "小明", Type: "person", Description: "用户"},
-						{Name: "北京", Type: "place", Description: "城市"},
+		ctx := context.Background()
+		helper := NewTestHelper(ctx)
+		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+
+		// 使用计数器来根据调用返回不同结果
+		callCount := 0
+		helper.MockPlugin.SetModelResponse("doubao-pro-32k", func(ctx context.Context, req *ai.ModelRequest) (*ai.ModelResponse, error) {
+			callCount++
+			var response map[string]any
+			if callCount == 1 || callCount == 2 {
+				// Topic 生成
+				response = map[string]any{"topic": "个人介绍"}
+			} else {
+				// Extraction 生成
+				response = map[string]any{
+					"entities": []map[string]any{
+						{"name": "小明", "type": "person", "description": "用户"},
+						{"name": "北京", "type": "place", "description": "城市"},
 					},
-					Relations: []ExtractedRelation{
-						{Subject: "小明", Predicate: "住在", Object: "北京", Fact: "小明住在北京"},
+					"relations": []map[string]any{
+						{"subject": "小明", "predicate": "住在", "object": "北京", "fact": "小明住在北京"},
 					},
 				}
-				data, _ := json.Marshal(result)
-				return json.Unmarshal(data, output)
 			}
-			return nil
-		}
+			data, _ := json.Marshal(response)
+			return &ai.ModelResponse{
+				Request: req,
+				Message: ai.NewModelTextMessage(string(data)),
+			}, nil
+		})
 
 		// 创建 mock 存储
 		mockVector := NewMockVectorStore()
 		mockGraph := NewMockGraphStore()
 
 		// 创建 actions 并注入 mock
-		episodeAction := NewEpisodeStorageAction()
-		episodeAction.BaseAction.WithLLMClient(mockLLM)
+		episodeAction := helper.NewEpisodeStorageAction()
 		episodeAction.WithVectorStore(mockVector)
 
-		extractionAction := NewExtractionAction()
-		extractionAction.BaseAction.WithLLMClient(mockLLM)
+		extractionAction := helper.NewExtractionAction()
 		extractionAction.WithStores(mockVector, mockGraph)
 
-		c := domain.NewAddContext(context.Background(), "agent_test", "user_test", "session_test")
+		c := domain.NewAddContext(ctx, "agent_test", "user_test", "session_test")
 		c.Messages = domain.Messages{
 			{Role: domain.RoleUser, Name: "小明", Content: "我叫小明，在北京做产品经理"},
 			{Role: domain.RoleAssistant, Name: "AI助手", Content: "你好小明！产品经理是个很有挑战的职业"},

@@ -18,54 +18,36 @@ func TestNewBaseAction(t *testing.T) {
 	assert.NotNil(t, action.logger)
 }
 
-func TestBaseAction_WithLLMClient(t *testing.T) {
+func TestBaseAction_GenEmbedding_WithMockPlugin(t *testing.T) {
+	ctx := context.Background()
+	helper := NewTestHelper(ctx)
+	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+
 	action := NewBaseAction("test")
-	mockClient := NewMockLLMClient()
-
-	result := action.WithLLMClient(mockClient)
-
-	assert.Same(t, action, result)
-	assert.Equal(t, mockClient, action.llmClient)
-}
-
-func TestBaseAction_GenEmbedding_WithMock(t *testing.T) {
-	mockClient := NewMockLLMClient()
-	mockClient.GenEmbeddingFunc = func(ctx context.Context, embedderName, text string) ([]float32, error) {
-		return []float32{0.1, 0.2, 0.3}, nil
-	}
-
-	action := NewBaseAction("test").WithLLMClient(mockClient)
-
-	embedding, err := action.GenEmbedding(context.Background(), "test-embedder", "hello")
+	embedding, err := action.GenEmbedding(ctx, "ark/doubao-embedding-text-240715", "hello")
 
 	assert.NoError(t, err)
 	assert.Equal(t, []float32{0.1, 0.2, 0.3}, embedding)
-	assert.Len(t, mockClient.GenEmbeddingCalls, 1)
-	assert.Equal(t, "test-embedder", mockClient.GenEmbeddingCalls[0].EmbedderName)
-	assert.Equal(t, "hello", mockClient.GenEmbeddingCalls[0].Text)
 }
 
-func TestBaseAction_Generate_WithMock(t *testing.T) {
-	mockClient := NewMockLLMClient()
-	mockClient.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
-		// 模拟返回结果
-		if result, ok := output.(*ExtractionResult); ok {
-			result.Entities = []ExtractedEntity{{Name: "test", Type: "person"}}
-		}
-		return nil
-	}
+func TestBaseAction_Generate_WithMockPlugin(t *testing.T) {
+	ctx := context.Background()
+	helper := NewTestHelper(ctx)
+	helper.SetModelJSON(map[string]any{
+		"topic": "测试主题",
+	})
 
-	action := NewBaseAction("test").WithLLMClient(mockClient)
-	ctx := domain.NewAddContext(context.Background(), "agent", "user", "session")
+	action := NewBaseAction("test")
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
 
-	var result ExtractionResult
-	err := action.Generate(ctx, "extraction", map[string]any{"input": "test"}, &result)
+	var result TopicResult
+	err := action.Generate(addCtx, "topic", map[string]any{
+		"content":  "测试内容",
+		"language": "中文",
+	}, &result)
 
 	assert.NoError(t, err)
-	assert.Len(t, result.Entities, 1)
-	assert.Equal(t, "test", result.Entities[0].Name)
-	assert.Len(t, mockClient.GenerateCalls, 1)
-	assert.Equal(t, "extraction", mockClient.GenerateCalls[0].PromptName)
+	assert.Equal(t, "测试主题", result.Topic)
 }
 
 func TestBaseAction_CosineSimilarity(t *testing.T) {

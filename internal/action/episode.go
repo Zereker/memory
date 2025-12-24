@@ -18,7 +18,7 @@ var _ domain.AddAction = (*EpisodeStorageAction)(nil)
 type EpisodeStorageAction struct {
 	*BaseAction
 
-	vectorStore VectorStore
+	vectorStore storage.VectorStore
 }
 
 // NewEpisodeStorageAction 创建 EpisodeStorageAction
@@ -30,7 +30,7 @@ func NewEpisodeStorageAction() *EpisodeStorageAction {
 }
 
 // WithVectorStore 设置向量存储（用于测试注入 mock）
-func (a *EpisodeStorageAction) WithVectorStore(store VectorStore) *EpisodeStorageAction {
+func (a *EpisodeStorageAction) WithVectorStore(store storage.VectorStore) *EpisodeStorageAction {
 	a.vectorStore = store
 	return a
 }
