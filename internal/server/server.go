@@ -192,7 +192,7 @@ func (s *Server) Shutdown() error {
 	}
 
 	if s.store != nil {
-		s.store.Close()
+		_ = s.store.Close()
 	}
 
 	return nil

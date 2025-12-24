@@ -22,9 +22,10 @@ const (
 
 // BaseAction 提供 Action 的公共能力
 type BaseAction struct {
-	name   string
-	logger *slog.Logger
-	g      *genkit.Genkit // 公开以便子类访问
+	name      string
+	logger    *slog.Logger
+	g         *genkit.Genkit // 公开以便子类访问
+	llmClient LLMClient      // 可选：用于测试时注入 mock
 }
 
 // NewBaseAction 创建 BaseAction
@@ -36,8 +37,19 @@ func NewBaseAction(name string) *BaseAction {
 	}
 }
 
+// WithLLMClient 设置 LLM 客户端（用于测试注入 mock）
+func (b *BaseAction) WithLLMClient(client LLMClient) *BaseAction {
+	b.llmClient = client
+	return b
+}
+
 // GenEmbedding 生成文本的向量表示
 func (b *BaseAction) GenEmbedding(ctx context.Context, embedderName, text string) ([]float32, error) {
+	// 如果有注入的 LLMClient（用于测试），优先使用
+	if b.llmClient != nil {
+		return b.llmClient.GenEmbedding(ctx, embedderName, text)
+	}
+
 	resp, err := genkit.Embed(ctx, b.g, ai.WithEmbedderName(embedderName), ai.WithTextDocs(text))
 	if err != nil {
 		return nil, err
@@ -52,6 +64,11 @@ func (b *BaseAction) GenEmbedding(ctx context.Context, embedderName, text string
 
 // Generate 调用 LLM 生成内容
 func (b *BaseAction) Generate(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+	// 如果有注入的 LLMClient（用于测试），优先使用
+	if b.llmClient != nil {
+		return b.llmClient.Generate(c, promptName, input, output)
+	}
+
 	prompt := genkit.LookupPrompt(b.g, promptName)
 	if prompt == nil {
 		return fmt.Errorf("prompt not found: %s", promptName)

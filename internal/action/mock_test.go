@@ -1,0 +1,159 @@
+package action
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/Zereker/memory/internal/domain"
+)
+
+// MockLLMClient 用于测试的 LLM mock
+type MockLLMClient struct {
+	// GenEmbeddingFunc 自定义 embedding 行为
+	GenEmbeddingFunc func(ctx context.Context, embedderName, text string) ([]float32, error)
+
+	// GenerateFunc 自定义 generate 行为
+	GenerateFunc func(c *domain.AddContext, promptName string, input map[string]any, output any) error
+
+	// 调用记录
+	GenEmbeddingCalls []struct {
+		EmbedderName string
+		Text         string
+	}
+	GenerateCalls []struct {
+		PromptName string
+		Input      map[string]any
+	}
+}
+
+func NewMockLLMClient() *MockLLMClient {
+	return &MockLLMClient{
+		// 默认返回固定向量
+		GenEmbeddingFunc: func(ctx context.Context, embedderName, text string) ([]float32, error) {
+			return []float32{0.1, 0.2, 0.3, 0.4, 0.5}, nil
+		},
+		// 默认返回空结果
+		GenerateFunc: func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+			return nil
+		},
+	}
+}
+
+func (m *MockLLMClient) GenEmbedding(ctx context.Context, embedderName, text string) ([]float32, error) {
+	m.GenEmbeddingCalls = append(m.GenEmbeddingCalls, struct {
+		EmbedderName string
+		Text         string
+	}{embedderName, text})
+	return m.GenEmbeddingFunc(ctx, embedderName, text)
+}
+
+func (m *MockLLMClient) Generate(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+	m.GenerateCalls = append(m.GenerateCalls, struct {
+		PromptName string
+		Input      map[string]any
+	}{promptName, input})
+	return m.GenerateFunc(c, promptName, input, output)
+}
+
+// WithExtractionResult 设置 extraction prompt 返回指定结果
+func (m *MockLLMClient) WithExtractionResult(entities []ExtractedEntity, relations []ExtractedRelation) *MockLLMClient {
+	m.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+		if promptName == "extraction" {
+			result := ExtractionResult{
+				Entities:  entities,
+				Relations: relations,
+			}
+			data, _ := json.Marshal(result)
+			return json.Unmarshal(data, output)
+		}
+		return nil
+	}
+	return m
+}
+
+// WithEpisodeResult 设置 episode prompt 返回指定结果
+func (m *MockLLMClient) WithEpisodeResult(topic string, significance int) *MockLLMClient {
+	origFunc := m.GenerateFunc
+	m.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+		if promptName == "episode" {
+			result := map[string]any{
+				"topic":        topic,
+				"significance": significance,
+			}
+			data, _ := json.Marshal(result)
+			return json.Unmarshal(data, output)
+		}
+		return origFunc(c, promptName, input, output)
+	}
+	return m
+}
+
+// MockVectorStore 用于测试的向量存储 mock
+type MockVectorStore struct {
+	StoreFunc func(ctx context.Context, id string, doc map[string]any) error
+
+	StoreCalls []struct {
+		ID  string
+		Doc map[string]any
+	}
+}
+
+func NewMockVectorStore() *MockVectorStore {
+	return &MockVectorStore{
+		StoreFunc: func(ctx context.Context, id string, doc map[string]any) error {
+			return nil
+		},
+	}
+}
+
+func (m *MockVectorStore) Store(ctx context.Context, id string, doc map[string]any) error {
+	m.StoreCalls = append(m.StoreCalls, struct {
+		ID  string
+		Doc map[string]any
+	}{id, doc})
+	return m.StoreFunc(ctx, id, doc)
+}
+
+// MockGraphStore 用于测试的图存储 mock
+type MockGraphStore struct {
+	MergeNodeFunc          func(ctx context.Context, labels []string, mergeKey string, mergeValue any, properties map[string]any) error
+	CreateRelationshipFunc func(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error
+
+	MergeNodeCalls          []map[string]any
+	CreateRelationshipCalls []map[string]any
+}
+
+func NewMockGraphStore() *MockGraphStore {
+	return &MockGraphStore{
+		MergeNodeFunc: func(ctx context.Context, labels []string, mergeKey string, mergeValue any, properties map[string]any) error {
+			return nil
+		},
+		CreateRelationshipFunc: func(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error {
+			return nil
+		},
+	}
+}
+
+func (m *MockGraphStore) MergeNode(ctx context.Context, labels []string, mergeKey string, mergeValue any, properties map[string]any) error {
+	m.MergeNodeCalls = append(m.MergeNodeCalls, map[string]any{
+		"labels":     labels,
+		"mergeKey":   mergeKey,
+		"mergeValue": mergeValue,
+		"properties": properties,
+	})
+	return m.MergeNodeFunc(ctx, labels, mergeKey, mergeValue, properties)
+}
+
+func (m *MockGraphStore) CreateRelationship(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error {
+	m.CreateRelationshipCalls = append(m.CreateRelationshipCalls, map[string]any{
+		"fromLabel":  fromLabel,
+		"fromKey":    fromKey,
+		"fromValue":  fromValue,
+		"toLabel":    toLabel,
+		"toKey":      toKey,
+		"toValue":    toValue,
+		"relType":    relType,
+		"properties": properties,
+	})
+	return m.CreateRelationshipFunc(ctx, fromLabel, fromKey, fromValue, toLabel, toKey, toValue, relType, properties)
+}

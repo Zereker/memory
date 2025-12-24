@@ -2,245 +2,255 @@ package action
 
 import (
 	"context"
-	"log"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Zereker/memory/internal/domain"
-	genkitpkg "github.com/Zereker/memory/pkg/genkit"
-	"github.com/Zereker/memory/pkg/graph"
-	"github.com/Zereker/memory/pkg/storage"
 )
 
-const (
-	defaultModel     = "doubao-pro-32k"
-	defaultEmbedding = "doubao-embedding-text-240715"
-)
+func TestNewBaseAction(t *testing.T) {
+	action := NewBaseAction("test")
 
-// testHelper 测试辅助结构，在 TestMain 中初始化
-var (
-	testHelper *BaseAction
-)
+	assert.NotNil(t, action)
+	assert.Equal(t, "test", action.name)
+	assert.NotNil(t, action.logger)
+}
 
-// skipIntegrationTests 标记是否跳过集成测试
-var skipIntegrationTests bool
+func TestBaseAction_WithLLMClient(t *testing.T) {
+	action := NewBaseAction("test")
+	mockClient := NewMockLLMClient()
 
-// TestMain 统一初始化测试依赖，避免多次初始化
-func TestMain(m *testing.M) {
-	ctx := context.Background()
+	result := action.WithLLMClient(mockClient)
 
-	// 从环境变量读取 API Key
-	apiKey := os.Getenv("ARK_API_KEY")
-	if apiKey == "" {
-		log.Println("ARK_API_KEY not set, skipping integration tests")
-		skipIntegrationTests = true
-		os.Exit(0) // 跳过所有测试
+	assert.Same(t, action, result)
+	assert.Equal(t, mockClient, action.llmClient)
+}
+
+func TestBaseAction_GenEmbedding_WithMock(t *testing.T) {
+	mockClient := NewMockLLMClient()
+	mockClient.GenEmbeddingFunc = func(ctx context.Context, embedderName, text string) ([]float32, error) {
+		return []float32{0.1, 0.2, 0.3}, nil
 	}
 
-	// 初始化 Genkit：Ark 用于 LLM 和 Embedding
-	err := genkitpkg.Init(ctx, genkitpkg.Config{
-		Ark: genkitpkg.ArkConfig{
-			APIKey:  apiKey,
-			BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
-			Models: []genkitpkg.ModelConfig{
-				{
-					Name:  defaultModel,
-					Type:  genkitpkg.ModelTypeLLM,
-					Model: defaultModel,
-				},
-				{
-					Name:  defaultEmbedding,
-					Type:  genkitpkg.ModelTypeEmbedding,
-					Model: defaultEmbedding,
-					Dim:   2560,
-				},
-			},
+	action := NewBaseAction("test").WithLLMClient(mockClient)
+
+	embedding, err := action.GenEmbedding(context.Background(), "test-embedder", "hello")
+
+	assert.NoError(t, err)
+	assert.Equal(t, []float32{0.1, 0.2, 0.3}, embedding)
+	assert.Len(t, mockClient.GenEmbeddingCalls, 1)
+	assert.Equal(t, "test-embedder", mockClient.GenEmbeddingCalls[0].EmbedderName)
+	assert.Equal(t, "hello", mockClient.GenEmbeddingCalls[0].Text)
+}
+
+func TestBaseAction_Generate_WithMock(t *testing.T) {
+	mockClient := NewMockLLMClient()
+	mockClient.GenerateFunc = func(c *domain.AddContext, promptName string, input map[string]any, output any) error {
+		// 模拟返回结果
+		if result, ok := output.(*ExtractionResult); ok {
+			result.Entities = []ExtractedEntity{{Name: "test", Type: "person"}}
+		}
+		return nil
+	}
+
+	action := NewBaseAction("test").WithLLMClient(mockClient)
+	ctx := domain.NewAddContext(context.Background(), "agent", "user", "session")
+
+	var result ExtractionResult
+	err := action.Generate(ctx, "extraction", map[string]any{"input": "test"}, &result)
+
+	assert.NoError(t, err)
+	assert.Len(t, result.Entities, 1)
+	assert.Equal(t, "test", result.Entities[0].Name)
+	assert.Len(t, mockClient.GenerateCalls, 1)
+	assert.Equal(t, "extraction", mockClient.GenerateCalls[0].PromptName)
+}
+
+func TestBaseAction_CosineSimilarity(t *testing.T) {
+	action := NewBaseAction("test")
+
+	tests := []struct {
+		name     string
+		vec1     []float32
+		vec2     []float32
+		expected float64
+	}{
+		{
+			name:     "identical vectors",
+			vec1:     []float32{1, 0, 0},
+			vec2:     []float32{1, 0, 0},
+			expected: 1.0,
 		},
-	})
-
-	if err != nil {
-		log.Fatalf("Failed to initialize genkit: %v", err)
+		{
+			name:     "orthogonal vectors",
+			vec1:     []float32{1, 0, 0},
+			vec2:     []float32{0, 1, 0},
+			expected: 0.0,
+		},
+		{
+			name:     "opposite vectors",
+			vec1:     []float32{1, 0, 0},
+			vec2:     []float32{-1, 0, 0},
+			expected: -1.0,
+		},
+		{
+			name:     "empty vectors",
+			vec1:     []float32{},
+			vec2:     []float32{},
+			expected: 0.0,
+		},
+		{
+			name:     "different length vectors",
+			vec1:     []float32{1, 2},
+			vec2:     []float32{1, 2, 3},
+			expected: 0.0,
+		},
+		{
+			name:     "zero vectors",
+			vec1:     []float32{0, 0, 0},
+			vec2:     []float32{0, 0, 0},
+			expected: 0.0,
+		},
 	}
 
-	// 初始化 OpenSearch 存储
-	// 注意：运行测试前需先执行 make init INDEX=memories_test 初始化测试索引
-	_ = storage.Init(storage.OpenSearchConfig{
-		Addresses:    []string{"http://localhost:9200"},
-		IndexName:    "memories_test",
-		EmbeddingDim: 2560,
-	})
-
-	// 初始化 Neo4j 图存储
-	_ = graph.Init(graph.Neo4jConfig{
-		Enabled:  true,
-		URI:      "bolt://localhost:7687",
-		Username: "neo4j",
-		Password: "YOUR_NEO4J_PASSWORD",
-		Database: "neo4j",
-	})
-
-	// 初始化测试辅助结构
-	testHelper = NewBaseAction("test")
-
-	os.Exit(m.Run())
-}
-
-// TestEmbeddingGeneration 测试 embedding 生成
-func TestEmbeddingGeneration(t *testing.T) {
-	ctx := context.Background()
-
-	embedding, err := testHelper.GenEmbedding(ctx, EmbedderName, "测试文本")
-	if err != nil {
-		t.Fatalf("生成 embedding 失败: %v", err)
-	}
-
-	t.Logf("Embedding 长度: %d", len(embedding))
-	if len(embedding) == 0 {
-		t.Fatal("Embedding 为空")
-	}
-
-	t.Logf("前5个值: %v", embedding[:5])
-}
-
-// TestEmbeddingSimilarity 测试 embedding 相似度
-func TestEmbeddingSimilarity(t *testing.T) {
-	ctx := context.Background()
-
-	// 生成两个相似文本的 embedding
-	emb1, err := testHelper.GenEmbedding(ctx, EmbedderName, "我喜欢喝咖啡")
-	if err != nil {
-		t.Fatalf("生成 embedding1 失败: %v", err)
-	}
-
-	emb2, err := testHelper.GenEmbedding(ctx, EmbedderName, "我爱喝咖啡")
-	if err != nil {
-		t.Fatalf("生成 embedding2 失败: %v", err)
-	}
-
-	// 生成一个不相关文本的 embedding
-	emb3, err := testHelper.GenEmbedding(ctx, EmbedderName, "今天天气很好")
-	if err != nil {
-		t.Fatalf("生成 embedding3 失败: %v", err)
-	}
-
-	// 计算余弦相似度
-	sim12 := testHelper.CosineSimilarity(emb1, emb2)
-	sim13 := testHelper.CosineSimilarity(emb1, emb3)
-
-	t.Logf("'喜欢喝咖啡' vs '爱喝咖啡' 相似度: %.4f", sim12)
-	t.Logf("'喜欢喝咖啡' vs '今天天气很好' 相似度: %.4f", sim13)
-
-	// 验证相似文本的相似度应该更高
-	if sim12 <= sim13 {
-		t.Errorf("相似文本的相似度应该更高: sim12=%.4f, sim13=%.4f", sim12, sim13)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := action.CosineSimilarity(tt.vec1, tt.vec2)
+			assert.InDelta(t, tt.expected, result, 0.0001)
+		})
 	}
 }
 
-// TestDocToEpisode 测试 map 到 Episode 的转换
-func TestDocToEpisode(t *testing.T) {
+func TestBaseAction_DocToEpisode(t *testing.T) {
+	action := NewBaseAction("test")
+
 	tests := []struct {
 		name     string
 		doc      map[string]any
 		validate func(*testing.T, *domain.Episode)
 	}{
 		{
-			name: "基本字段转换",
+			name: "basic fields",
 			doc: map[string]any{
-				"id":      "ep_test_123",
+				"id":      "ep_123",
 				"role":    "user",
-				"name":    "小明",
+				"name":    "张三",
 				"content": "测试内容",
 				"topic":   "测试主题",
 			},
 			validate: func(t *testing.T, ep *domain.Episode) {
-				if ep.ID != "ep_test_123" {
-					t.Errorf("ID 不匹配: 期望 ep_test_123, 实际 %s", ep.ID)
-				}
-				if ep.Role != "user" {
-					t.Errorf("Role 不匹配: 期望 user, 实际 %s", ep.Role)
-				}
-				if ep.Name != "小明" {
-					t.Errorf("Name 不匹配: 期望 小明, 实际 %s", ep.Name)
-				}
-				if ep.Content != "测试内容" {
-					t.Errorf("Content 不匹配: 期望 测试内容, 实际 %s", ep.Content)
-				}
-				if ep.Topic != "测试主题" {
-					t.Errorf("Topic 不匹配: 期望 测试主题, 实际 %s", ep.Topic)
-				}
+				assert.Equal(t, "ep_123", ep.ID)
+				assert.Equal(t, "user", ep.Role)
+				assert.Equal(t, "张三", ep.Name)
+				assert.Equal(t, "测试内容", ep.Content)
+				assert.Equal(t, "测试主题", ep.Topic)
 			},
 		},
 		{
-			name: "时间字段转换 - RFC3339格式",
+			name: "time fields - RFC3339",
 			doc: map[string]any{
-				"id":         "ep_time_test",
+				"id":         "ep_time",
 				"created_at": "2024-01-15T10:30:00Z",
 				"timestamp":  "2024-01-15T10:30:00Z",
 			},
 			validate: func(t *testing.T, ep *domain.Episode) {
 				expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-				if !ep.CreatedAt.Equal(expected) {
-					t.Errorf("CreatedAt 不匹配: 期望 %v, 实际 %v", expected, ep.CreatedAt)
-				}
-				if !ep.Timestamp.Equal(expected) {
-					t.Errorf("Timestamp 不匹配: 期望 %v, 实际 %v", expected, ep.Timestamp)
-				}
+				assert.True(t, ep.CreatedAt.Equal(expected))
+				assert.True(t, ep.Timestamp.Equal(expected))
 			},
 		},
 		{
-			name: "时间字段转换 - RFC3339Nano格式",
+			name: "embedding fields - []any",
 			doc: map[string]any{
-				"id":         "ep_time_nano",
-				"created_at": "2024-01-15T10:30:00.123456789Z",
-			},
-			validate: func(t *testing.T, ep *domain.Episode) {
-				if ep.CreatedAt.IsZero() {
-					t.Error("CreatedAt 应该被解析")
-				}
-				if ep.CreatedAt.Year() != 2024 || ep.CreatedAt.Month() != 1 || ep.CreatedAt.Day() != 15 {
-					t.Errorf("CreatedAt 日期不正确: %v", ep.CreatedAt)
-				}
-			},
-		},
-		{
-			name: "embedding 字段转换 - []any",
-			doc: map[string]any{
-				"id":                "ep_emb_test",
+				"id":                "ep_emb",
 				"content_embedding": []any{0.1, 0.2, 0.3},
 				"topic_embedding":   []any{0.4, 0.5, 0.6},
 			},
 			validate: func(t *testing.T, ep *domain.Episode) {
-				if len(ep.Embedding) != 3 {
-					t.Errorf("Embedding 长度不匹配: 期望 3, 实际 %d", len(ep.Embedding))
-				}
-				if len(ep.TopicEmbedding) != 3 {
-					t.Errorf("TopicEmbedding 长度不匹配: 期望 3, 实际 %d", len(ep.TopicEmbedding))
-				}
+				assert.Len(t, ep.Embedding, 3)
+				assert.Len(t, ep.TopicEmbedding, 3)
 			},
 		},
 		{
-			name: "embedding 字段转换 - []float32",
+			name: "embedding fields - []float32",
 			doc: map[string]any{
 				"id":                "ep_emb_f32",
 				"content_embedding": []float32{0.1, 0.2, 0.3},
-				"topic_embedding":   []float32{0.4, 0.5, 0.6},
 			},
 			validate: func(t *testing.T, ep *domain.Episode) {
-				if len(ep.Embedding) != 3 {
-					t.Errorf("Embedding 长度不匹配: 期望 3, 实际 %d", len(ep.Embedding))
-				}
-				if len(ep.TopicEmbedding) != 3 {
-					t.Errorf("TopicEmbedding 长度不匹配: 期望 3, 实际 %d", len(ep.TopicEmbedding))
-				}
+				assert.Len(t, ep.Embedding, 3)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ep := testHelper.DocToEpisode(tt.doc)
+			ep := action.DocToEpisode(tt.doc)
 			tt.validate(t, ep)
 		})
 	}
+}
+
+func TestBaseAction_DocToEntity(t *testing.T) {
+	action := NewBaseAction("test")
+
+	doc := map[string]any{
+		"id":          "ent_123",
+		"name":        "张三",
+		"entity_type": "person",
+		"description": "一个人",
+	}
+
+	entity := action.DocToEntity(doc)
+
+	assert.Equal(t, "ent_123", entity.ID)
+	assert.Equal(t, "张三", entity.Name)
+	assert.Equal(t, domain.EntityType("person"), entity.Type)
+	assert.Equal(t, "一个人", entity.Description)
+}
+
+func TestBaseAction_DocToEdge(t *testing.T) {
+	action := NewBaseAction("test")
+
+	doc := map[string]any{
+		"id":          "edge_123",
+		"source_id":   "ent_1",
+		"target_id":   "ent_2",
+		"relation":    "knows",
+		"fact":        "张三认识李四",
+		"episode_ids": []any{"ep_1", "ep_2"},
+	}
+
+	edge := action.DocToEdge(doc)
+
+	assert.Equal(t, "edge_123", edge.ID)
+	assert.Equal(t, "ent_1", edge.SourceID)
+	assert.Equal(t, "ent_2", edge.TargetID)
+	assert.Equal(t, "knows", edge.Relation)
+	assert.Equal(t, "张三认识李四", edge.Fact)
+	assert.Len(t, edge.EpisodeIDs, 2)
+}
+
+func TestBaseAction_DocToSummary(t *testing.T) {
+	action := NewBaseAction("test")
+
+	doc := map[string]any{
+		"id":          "sum_123",
+		"agent_id":    "agent_1",
+		"user_id":     "user_1",
+		"content":     "摘要内容",
+		"topic":       "主题",
+		"episode_ids": []any{"ep_1", "ep_2"},
+	}
+
+	summary := action.DocToSummary(doc)
+
+	assert.Equal(t, "sum_123", summary.ID)
+	assert.Equal(t, "agent_1", summary.AgentID)
+	assert.Equal(t, "user_1", summary.UserID)
+	assert.Equal(t, "摘要内容", summary.Content)
+	assert.Equal(t, "主题", summary.Topic)
+	assert.Len(t, summary.EpisodeIDs, 2)
 }

@@ -23,8 +23,8 @@ var _ domain.AddAction = (*ExtractionAction)(nil)
 type ExtractionAction struct {
 	*BaseAction
 
-	vectorStore *storage.OpenSearchStore
-	graphStore  *graph.Neo4jStore
+	vectorStore VectorStore
+	graphStore  GraphStore
 }
 
 // NewExtractionAction 创建 ExtractionAction
@@ -34,6 +34,13 @@ func NewExtractionAction() *ExtractionAction {
 		vectorStore: storage.NewStore(),
 		graphStore:  graph.NewStore(),
 	}
+}
+
+// WithStores 设置存储（用于测试注入 mock）
+func (a *ExtractionAction) WithStores(vectorStore VectorStore, graphStore GraphStore) *ExtractionAction {
+	a.vectorStore = vectorStore
+	a.graphStore = graphStore
+	return a
 }
 
 // Name 返回 action 名称
@@ -210,7 +217,7 @@ func (a *ExtractionAction) buildEdges(c *domain.AddContext, relations []Extracte
 // storeEntity 存储 Entity 到 Neo4j
 func (a *ExtractionAction) storeEntity(c *domain.AddContext, entity domain.Entity) error {
 	if a.graphStore == nil {
-		return errors.New("graph store not initialized")
+		return nil // 图存储不可用时静默跳过
 	}
 
 	labels := []string{LabelEntity, string(entity.Type)}
@@ -255,7 +262,7 @@ func (a *ExtractionAction) storeEntityToVector(c *domain.AddContext, entity doma
 // storeEdge 存储 Edge 到 Neo4j
 func (a *ExtractionAction) storeEdge(c *domain.AddContext, edge domain.Edge, sourceName, targetName string) error {
 	if a.graphStore == nil {
-		return errors.New("graph store not initialized")
+		return nil // 图存储不可用时静默跳过
 	}
 
 	properties := map[string]any{

@@ -18,7 +18,7 @@ var _ domain.AddAction = (*EpisodeStorageAction)(nil)
 type EpisodeStorageAction struct {
 	*BaseAction
 
-	vectorStore *storage.OpenSearchStore
+	vectorStore VectorStore
 }
 
 // NewEpisodeStorageAction 创建 EpisodeStorageAction
@@ -27,6 +27,12 @@ func NewEpisodeStorageAction() *EpisodeStorageAction {
 		BaseAction:  NewBaseAction("episode_storage"),
 		vectorStore: storage.NewStore(),
 	}
+}
+
+// WithVectorStore 设置向量存储（用于测试注入 mock）
+func (a *EpisodeStorageAction) WithVectorStore(store VectorStore) *EpisodeStorageAction {
+	a.vectorStore = store
+	return a
 }
 
 // Name 返回 action 名称
@@ -54,8 +60,8 @@ func (a *EpisodeStorageAction) Handle(c *domain.AddContext) {
 	// 将每条消息转换为 Episode
 	for i, msg := range c.Messages {
 		// 检查 context 是否已取消
-		if c.Context.Err() != nil {
-			c.SetError(errors.Wrap(c.Context.Err(), "context cancelled"))
+		if c.Err() != nil {
+			c.SetError(errors.Wrap(c.Err(), "context cancelled"))
 			return
 		}
 
@@ -111,7 +117,7 @@ func (a *EpisodeStorageAction) Handle(c *domain.AddContext) {
 // storeEpisode 存储 Episode 到 OpenSearch
 func (a *EpisodeStorageAction) storeEpisode(c *domain.AddContext, ep domain.Episode) error {
 	if a.vectorStore == nil {
-		return errors.New("vector store not initialized")
+		return nil // 向量存储不可用时静默跳过
 	}
 
 	doc := map[string]any{

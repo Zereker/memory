@@ -92,7 +92,7 @@ func newStore(cfg Neo4jConfig) (*Neo4jStore, error) {
 // Run executes a Cypher query and returns results as []map[string]any
 func (s *Neo4jStore) Run(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: s.database})
-	defer session.Close(ctx)
+	defer func() { _ = session.Close(ctx) }()
 
 	result, err := session.Run(ctx, cypher, params)
 	if err != nil {
@@ -120,7 +120,7 @@ func (s *Neo4jStore) Run(ctx context.Context, cypher string, params map[string]a
 // RunWrite executes a write Cypher query in a transaction
 func (s *Neo4jStore) RunWrite(ctx context.Context, cypher string, params map[string]any) error {
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: s.database})
-	defer session.Close(ctx)
+	defer func() { _ = session.Close(ctx) }()
 
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		_, err := tx.Run(ctx, cypher, params)
@@ -137,7 +137,7 @@ func (s *Neo4jStore) RunWriteBatch(ctx context.Context, queries []string, params
 	}
 
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: s.database})
-	defer session.Close(ctx)
+	defer func() { _ = session.Close(ctx) }()
 
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		for i, query := range queries {
@@ -340,9 +340,10 @@ func (s *Neo4jStore) Traverse(ctx context.Context,
 	}
 
 	leftArrow, rightArrow := "-", "->"
-	if direction == "incoming" {
+	switch direction {
+	case "incoming":
 		leftArrow, rightArrow = "<-", "-"
-	} else if direction == "both" {
+	case "both":
 		leftArrow, rightArrow = "-", "-"
 	}
 

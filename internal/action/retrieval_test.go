@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Zereker/memory/internal/domain"
 )
 
@@ -12,27 +14,7 @@ import (
 func TestRetrievalAction(t *testing.T) {
 	t.Run("Name", func(t *testing.T) {
 		action := NewRetrievalAction()
-		if action.Name() != "retrieval" {
-			t.Errorf("期望 name=retrieval, 实际 %s", action.Name())
-		}
-	})
-
-	t.Run("EmptyQuery", func(t *testing.T) {
-		req := &domain.RetrieveRequest{
-			AgentID: "agent_test",
-			UserID:  "user_test",
-			Query:   "",
-		}
-		c := domain.NewRecallContext(context.Background(), req)
-
-		chain := domain.NewRecallChain()
-		chain.Use(NewRetrievalAction())
-		chain.Run(c)
-
-		// 空查询应该正常处理（可能生成空 embedding）
-		if c.Error() != nil {
-			t.Logf("空查询产生错误（预期行为）: %v", c.Error())
-		}
+		assert.Equal(t, "retrieval", action.Name())
 	})
 
 	t.Run("DefaultLimit", func(t *testing.T) {
@@ -44,9 +26,20 @@ func TestRetrievalAction(t *testing.T) {
 		}
 		c := domain.NewRecallContext(context.Background(), req)
 
-		if c.Limit != 10 {
-			t.Errorf("默认 limit 应该是 10, 实际 %d", c.Limit)
+		// 默认 limit 应该是 10
+		assert.Equal(t, 10, c.Limit)
+	})
+
+	t.Run("CustomLimit", func(t *testing.T) {
+		req := &domain.RetrieveRequest{
+			AgentID: "agent_test",
+			UserID:  "user_test",
+			Query:   "test",
+			Limit:   20,
 		}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		assert.Equal(t, 20, c.Limit)
 	})
 }
 
@@ -76,20 +69,11 @@ func TestFormatMemoryContext(t *testing.T) {
 		}
 
 		result := FormatMemoryContext(c)
-		t.Logf("格式化结果:\n%s", result)
 
-		if !strings.Contains(result, "对话摘要") {
-			t.Error("结果应包含对话摘要")
-		}
-		if !strings.Contains(result, "用户信息") {
-			t.Error("结果应包含用户信息")
-		}
-		if !strings.Contains(result, "相关对话记录") {
-			t.Error("结果应包含相关对话记录")
-		}
-		if !strings.Contains(result, "提及的实体") {
-			t.Error("结果应包含提及的实体")
-		}
+		assert.Contains(t, result, "对话摘要")
+		assert.Contains(t, result, "用户信息")
+		assert.Contains(t, result, "相关对话记录")
+		assert.Contains(t, result, "提及的实体")
 	})
 
 	t.Run("Empty", func(t *testing.T) {
@@ -102,9 +86,7 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "没有找到") {
-			t.Error("空结果应提示未找到")
-		}
+		assert.Contains(t, result, "没有找到")
 	})
 
 	t.Run("OnlyEpisodes", func(t *testing.T) {
@@ -120,12 +102,8 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "相关对话记录") {
-			t.Error("应包含对话记录")
-		}
-		if strings.Contains(result, "对话摘要") {
-			t.Error("不应包含对话摘要（无 Summary）")
-		}
+		assert.Contains(t, result, "相关对话记录")
+		assert.NotContains(t, result, "对话摘要") // 无 Summary
 	})
 
 	t.Run("OnlySummaries", func(t *testing.T) {
@@ -141,12 +119,8 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "对话摘要") {
-			t.Error("应包含对话摘要")
-		}
-		if !strings.Contains(result, "[测试]") {
-			t.Error("应包含 topic 标签")
-		}
+		assert.Contains(t, result, "对话摘要")
+		assert.Contains(t, result, "[测试]")
 	})
 
 	t.Run("SummaryWithoutTopic", func(t *testing.T) {
@@ -162,12 +136,8 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "没有主题的摘要") {
-			t.Error("应包含摘要内容")
-		}
-		if strings.Contains(result, "[]") {
-			t.Error("无主题时不应显示空括号")
-		}
+		assert.Contains(t, result, "没有主题的摘要")
+		assert.NotContains(t, result, "[]")
 	})
 
 	t.Run("EpisodeWithoutName", func(t *testing.T) {
@@ -183,9 +153,7 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "[user]") {
-			t.Error("无名字时应使用 role")
-		}
+		assert.Contains(t, result, "[user]")
 	})
 
 	t.Run("EntityWithDescription", func(t *testing.T) {
@@ -201,9 +169,7 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "小明: 产品经理") {
-			t.Error("有描述时应显示 name: description")
-		}
+		assert.Contains(t, result, "小明: 产品经理")
 	})
 
 	t.Run("EntityWithoutDescription", func(t *testing.T) {
@@ -219,8 +185,70 @@ func TestFormatMemoryContext(t *testing.T) {
 
 		result := FormatMemoryContext(c)
 
-		if !strings.Contains(result, "北京 (place)") {
-			t.Error("无描述时应显示 name (type)")
-		}
+		assert.Contains(t, result, "北京 (place)")
 	})
+}
+
+// TestBudgetCalculation 测试 token 预算计算
+func TestBudgetCalculation(t *testing.T) {
+	t.Run("EstimateTokens", func(t *testing.T) {
+		// 中文约 1.5 字符/token
+		text := "这是一个测试字符串"
+		chars := len([]rune(text))
+		expectedTokens := float64(chars) / CharsPerToken
+
+		// 验证常量
+		assert.Equal(t, 1.5, CharsPerToken)
+		assert.Greater(t, expectedTokens, 0.0)
+	})
+
+	t.Run("DefaultMaxTokens", func(t *testing.T) {
+		assert.Equal(t, 2000, DefaultMaxTokens)
+		assert.Equal(t, 3, DefaultMaxSummaries)
+		assert.Equal(t, 10, DefaultMaxEdges)
+		assert.Equal(t, 5, DefaultMaxEntities)
+		assert.Equal(t, 5, DefaultMaxEpisodes)
+	})
+}
+
+// TestFormatMemoryContextIntegration 测试完整格式化场景
+func TestFormatMemoryContextIntegration(t *testing.T) {
+	req := &domain.RetrieveRequest{
+		AgentID: "agent_test",
+		UserID:  "user_test",
+		Query:   "工作和爱好",
+	}
+	c := domain.NewRecallContext(context.Background(), req)
+
+	// 添加多种类型的数据
+	c.Summaries = []domain.Summary{
+		{Topic: "工作", Content: "用户在科技公司担任工程师"},
+		{Topic: "爱好", Content: "用户喜欢跑步和阅读"},
+	}
+	c.Entities = []domain.Entity{
+		{Name: "张三", Type: domain.EntityTypePerson, Description: "科技公司工程师"},
+		{Name: "科技公司", Type: domain.EntityTypeThing},
+	}
+	c.Edges = []domain.Edge{
+		{Fact: "张三在科技公司工作"},
+	}
+	c.Episodes = []domain.Episode{
+		{Role: domain.RoleUser, Name: "张三", Content: "我每天早上去跑步"},
+	}
+
+	result := FormatMemoryContext(c)
+
+	// 验证所有部分都存在
+	assert.Contains(t, result, "对话摘要")
+	assert.Contains(t, result, "[工作]")
+	assert.Contains(t, result, "[爱好]")
+	assert.Contains(t, result, "用户信息")
+	assert.Contains(t, result, "张三在科技公司工作")
+	assert.Contains(t, result, "提及的实体")
+	assert.Contains(t, result, "相关对话记录")
+	assert.Contains(t, result, "[张三]")
+
+	// 验证格式正确
+	lines := strings.Split(result, "\n")
+	assert.Greater(t, len(lines), 5) // 应该有多行输出
 }
