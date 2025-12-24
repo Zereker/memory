@@ -32,37 +32,9 @@ func (m *MockVectorStore) Store(ctx context.Context, id string, doc map[string]a
 	return m.StoreFunc(ctx, id, doc)
 }
 
-func (m *MockVectorStore) Get(ctx context.Context, id string) (map[string]any, error) {
-	return nil, nil
-}
-
 func (m *MockVectorStore) Search(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 	m.SearchCalls = append(m.SearchCalls, query)
 	return m.SearchFunc(ctx, query)
-}
-
-func (m *MockVectorStore) Delete(ctx context.Context, id string) error {
-	return nil
-}
-
-func (m *MockVectorStore) DeleteByQuery(ctx context.Context, filters map[string]any) (int, error) {
-	return 0, nil
-}
-
-func (m *MockVectorStore) Count(ctx context.Context, filters map[string]any) (int, error) {
-	return 0, nil
-}
-
-func (m *MockVectorStore) Update(ctx context.Context, id string, doc map[string]any) error {
-	return nil
-}
-
-func (m *MockVectorStore) UpdateFields(ctx context.Context, id string, fields map[string]any) error {
-	return nil
-}
-
-func (m *MockVectorStore) Close() error {
-	return nil
 }
 
 // MockGraphStore 用于测试的图存储 mock
