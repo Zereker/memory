@@ -12,13 +12,16 @@ import (
 
 // MockConfig holds mock plugin configuration
 type MockConfig struct {
-	Models []ModelConfig
+	Provider string        // Provider prefix (default: "mock"). Use "ark" to match real model names.
+	Models   []ModelConfig
 }
 
 // MockPlugin implements a test-only genkit plugin with configurable responses
 type MockPlugin struct {
 	mu sync.RWMutex
 
+	// provider prefix for model names
+	provider string
 	// modelResponses maps model name to response function
 	modelResponses map[string]func(ctx context.Context, req *ai.ModelRequest) (*ai.ModelResponse, error)
 	// embedderResponses maps embedder name to response function
@@ -30,7 +33,12 @@ type MockPlugin struct {
 
 // NewMockPlugin creates a new mock plugin for testing
 func NewMockPlugin(cfg MockConfig) *MockPlugin {
+	provider := cfg.Provider
+	if provider == "" {
+		provider = "mock"
+	}
 	return &MockPlugin{
+		provider:          provider,
 		models:            cfg.Models,
 		modelResponses:    make(map[string]func(ctx context.Context, req *ai.ModelRequest) (*ai.ModelResponse, error)),
 		embedderResponses: make(map[string]func(ctx context.Context, req *ai.EmbedRequest) (*ai.EmbedResponse, error)),
@@ -63,7 +71,7 @@ func (p *MockPlugin) Init(ctx context.Context) []api.Action {
 
 // defineModel creates a mock model
 func (p *MockPlugin) defineModel(m ModelConfig) ai.Model {
-	name := fmt.Sprintf("mock/%s", m.Name)
+	name := fmt.Sprintf("%s/%s", p.provider, m.Name)
 	return ai.NewModel(name, &ai.ModelOptions{
 		Label: fmt.Sprintf("Mock %s", m.Name),
 		Supports: &ai.ModelSupports{
@@ -102,7 +110,7 @@ func (p *MockPlugin) defineModel(m ModelConfig) ai.Model {
 
 // defineEmbedder creates a mock embedder
 func (p *MockPlugin) defineEmbedder(m ModelConfig) ai.Embedder {
-	name := fmt.Sprintf("mock/%s", m.Name)
+	name := fmt.Sprintf("%s/%s", p.provider, m.Name)
 	return ai.NewEmbedder(name, &ai.EmbedderOptions{
 		Label:      fmt.Sprintf("Mock %s", m.Name),
 		Dimensions: m.Dim,

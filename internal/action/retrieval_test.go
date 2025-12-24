@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
+	"github.com/Zereker/memory/pkg/storage"
 )
 
 // TestRetrievalAction 单元测试
@@ -646,4 +647,518 @@ func (m *mockRecallAction) HandleRecall(c *domain.RecallContext) {
 	if m.handler != nil {
 		m.handler(c)
 	}
+}
+
+// TestRetrievalAction_SearchEpisodes 测试 Episode 搜索
+func TestRetrievalAction_SearchEpisodes(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return []map[string]any{
+				{
+					"id":      "ep_1",
+					"type":    domain.DocTypeEpisode,
+					"role":    domain.RoleUser,
+					"content": "测试内容",
+					"_score":  0.95,
+				},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Embedding = []float32{0.1, 0.2}
+
+		action.searchEpisodes(c)
+
+		assert.Len(t, c.Episodes, 1)
+		assert.Equal(t, "ep_1", c.Episodes[0].ID)
+		assert.Equal(t, 0.95, c.Episodes[0].Score)
+	})
+
+	t.Run("search error", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Embedding = []float32{0.1, 0.2}
+
+		action.searchEpisodes(c)
+
+		assert.Empty(t, c.Episodes)
+	})
+
+	t.Run("nil store", func(t *testing.T) {
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: nil,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		action.searchEpisodes(c)
+
+		assert.Empty(t, c.Episodes)
+	})
+}
+
+// TestRetrievalAction_SearchSummaries 测试 Summary 搜索
+func TestRetrievalAction_SearchSummaries(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return []map[string]any{
+				{
+					"id":          "sum_1",
+					"type":        domain.DocTypeSummary,
+					"topic":       "工作",
+					"content":     "用户是工程师",
+					"episode_ids": []string{"ep_1", "ep_2"},
+					"_score":      0.88,
+				},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Embedding = []float32{0.1, 0.2}
+
+		action.searchSummaries(c)
+
+		assert.Len(t, c.Summaries, 1)
+		assert.Equal(t, "sum_1", c.Summaries[0].ID)
+		assert.Equal(t, 0.88, c.Summaries[0].Score)
+	})
+
+	t.Run("search error", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		action.searchSummaries(c)
+
+		assert.Empty(t, c.Summaries)
+	})
+}
+
+// TestRetrievalAction_SearchEdges 测试 Edge 搜索
+func TestRetrievalAction_SearchEdges(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return []map[string]any{
+				{
+					"id":      "edge_1",
+					"type":    domain.DocTypeEdge,
+					"subject": "小明",
+					"object":  "北京",
+					"fact":    "小明住在北京",
+					"_score":  0.92,
+				},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Embedding = []float32{0.1, 0.2}
+
+		action.searchEdges(c)
+
+		assert.Len(t, c.Edges, 1)
+		assert.Equal(t, "edge_1", c.Edges[0].ID)
+		assert.Equal(t, 0.92, c.Edges[0].Score)
+	})
+
+	t.Run("search error", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		action.searchEdges(c)
+
+		assert.Empty(t, c.Edges)
+	})
+}
+
+// TestRetrievalAction_SearchEntities 测试 Entity 搜索
+func TestRetrievalAction_SearchEntities(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return []map[string]any{
+				{
+					"id":          "ent_1",
+					"type":        domain.DocTypeEntity,
+					"name":        "小明",
+					"entity_type": "person",
+					"description": "用户",
+					"_score":      0.85,
+				},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Embedding = []float32{0.1, 0.2}
+
+		action.searchEntities(c)
+
+		assert.Len(t, c.Entities, 1)
+		assert.Equal(t, "ent_1", c.Entities[0].ID)
+		assert.Equal(t, 0.85, c.Entities[0].Score)
+	})
+
+	t.Run("search error", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		action.searchEntities(c)
+
+		assert.Empty(t, c.Entities)
+	})
+}
+
+// TestRetrievalAction_ExpandByGraphTraversal 测试图遍历扩展
+func TestRetrievalAction_ExpandByGraphTraversal(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockGraph := NewMockGraphStore()
+		mockGraph.TraverseFunc = func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+			return []map[string]any{
+				{
+					"id":          "ent_2",
+					"agent_id":    "a",
+					"user_id":     "u",
+					"name":        "小红",
+					"type":        "person",
+					"description": "小明的朋友",
+				},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction: NewBaseAction("retrieval"),
+			graphStore: mockGraph,
+		}
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "q",
+			Options: domain.RetrieveOptions{MaxHops: 2},
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Entities = []domain.Entity{
+			{ID: "ent_1", Name: "小明"},
+		}
+
+		action.expandByGraphTraversal(c)
+
+		assert.Len(t, c.Entities, 2)
+		assert.Equal(t, "ent_2", c.Entities[1].ID)
+	})
+
+	t.Run("skip duplicates", func(t *testing.T) {
+		mockGraph := NewMockGraphStore()
+		mockGraph.TraverseFunc = func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+			return []map[string]any{
+				{"id": "ent_1", "name": "小明"}, // 重复
+				{"id": "ent_2", "name": "小红"},
+			}, nil
+		}
+
+		action := &RetrievalAction{
+			BaseAction: NewBaseAction("retrieval"),
+			graphStore: mockGraph,
+		}
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "q",
+			Options: domain.RetrieveOptions{MaxHops: 2},
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Entities = []domain.Entity{
+			{ID: "ent_1", Name: "小明"},
+		}
+
+		action.expandByGraphTraversal(c)
+
+		assert.Len(t, c.Entities, 2) // ent_1 不重复添加
+	})
+
+	t.Run("traverse error", func(t *testing.T) {
+		mockGraph := NewMockGraphStore()
+		mockGraph.TraverseFunc = func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction: NewBaseAction("retrieval"),
+			graphStore: mockGraph,
+		}
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "q",
+			Options: domain.RetrieveOptions{MaxHops: 2},
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Entities = []domain.Entity{
+			{ID: "ent_1", Name: "小明"},
+		}
+
+		action.expandByGraphTraversal(c)
+
+		// 错误时保持原有 entities
+		assert.Len(t, c.Entities, 1)
+	})
+
+	t.Run("nil graph store", func(t *testing.T) {
+		action := &RetrievalAction{
+			BaseAction: NewBaseAction("retrieval"),
+			graphStore: nil,
+		}
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "q"}
+		c := domain.NewRecallContext(context.Background(), req)
+		c.Entities = []domain.Entity{{ID: "ent_1"}}
+
+		action.expandByGraphTraversal(c)
+
+		assert.Len(t, c.Entities, 1) // 无变化
+	})
+}
+
+// TestRetrievalAction_HandleRecall_WithStores 测试完整的 HandleRecall 流程
+func TestRetrievalAction_HandleRecall_WithStores(t *testing.T) {
+	t.Run("full flow", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		searchCallCount := 0
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			searchCallCount++
+			docType := query.Filters["type"].(string)
+			switch docType {
+			case domain.DocTypeSummary:
+				return []map[string]any{
+					{"id": "sum_1", "type": domain.DocTypeSummary, "topic": "工作", "content": "用户是工程师"},
+				}, nil
+			case domain.DocTypeEdge:
+				return []map[string]any{
+					{"id": "edge_1", "type": domain.DocTypeEdge, "fact": "用户住在北京"},
+				}, nil
+			case domain.DocTypeEntity:
+				return []map[string]any{
+					{"id": "ent_1", "type": domain.DocTypeEntity, "name": "用户", "entity_type": "person"},
+				}, nil
+			case domain.DocTypeEpisode:
+				return []map[string]any{
+					{"id": "ep_1", "type": domain.DocTypeEpisode, "role": domain.RoleUser, "content": "测试"},
+				}, nil
+			}
+			return nil, nil
+		}
+
+		mockLLM := NewMockLLMClient()
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+			graphStore:  nil,
+		}
+		action.WithLLMClient(mockLLM)
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "用户的工作",
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		chain := domain.NewRecallChain()
+		chain.Use(action)
+		chain.Run(c)
+
+		assert.Len(t, c.Summaries, 1)
+		assert.Len(t, c.Edges, 1)
+		assert.Len(t, c.Entities, 1)
+		assert.Len(t, c.Episodes, 1)
+		assert.Equal(t, 4, searchCallCount) // 4种类型各搜索一次
+	})
+
+	t.Run("embedding error", func(t *testing.T) {
+		mockLLM := NewMockLLMClient()
+		mockLLM.GenEmbeddingFunc = func(ctx context.Context, embedderName, text string) ([]float32, error) {
+			return nil, assert.AnError
+		}
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: NewMockVectorStore(),
+		}
+		action.WithLLMClient(mockLLM)
+
+		req := &domain.RetrieveRequest{AgentID: "a", UserID: "u", Query: "test"}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		nextCalled := false
+		chain := domain.NewRecallChain()
+		chain.Use(action)
+		chain.Use(&mockRecallAction{handler: func(c *domain.RecallContext) {
+			nextCalled = true
+			c.Next()
+		}})
+		chain.Run(c)
+
+		assert.True(t, nextCalled) // 即使有错误也调用 Next
+		assert.Empty(t, c.Summaries)
+	})
+
+	t.Run("with graph traversal", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			docType := query.Filters["type"].(string)
+			if docType == domain.DocTypeEntity {
+				return []map[string]any{
+					{"id": "ent_1", "type": domain.DocTypeEntity, "name": "小明", "entity_type": "person"},
+				}, nil
+			}
+			return nil, nil
+		}
+
+		mockGraph := NewMockGraphStore()
+		mockGraph.TraverseFunc = func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+			return []map[string]any{
+				{"id": "ent_2", "name": "小红", "type": "person"},
+			}, nil
+		}
+
+		mockLLM := NewMockLLMClient()
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+			graphStore:  mockGraph,
+		}
+		action.WithLLMClient(mockLLM)
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "test",
+			Options: domain.RetrieveOptions{MaxHops: 2},
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		chain := domain.NewRecallChain()
+		chain.Use(action)
+		chain.Run(c)
+
+		assert.Len(t, c.Entities, 2) // 原始 + 图遍历扩展
+	})
+
+	t.Run("disabled types", func(t *testing.T) {
+		mockVector := NewMockVectorStore()
+		searchTypes := []string{}
+		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			searchTypes = append(searchTypes, query.Filters["type"].(string))
+			return nil, nil
+		}
+
+		mockLLM := NewMockLLMClient()
+
+		action := &RetrievalAction{
+			BaseAction:  NewBaseAction("retrieval"),
+			vectorStore: mockVector,
+		}
+		action.WithLLMClient(mockLLM)
+
+		req := &domain.RetrieveRequest{
+			AgentID: "a",
+			UserID:  "u",
+			Query:   "test",
+			Options: domain.RetrieveOptions{
+				MaxSummaries: -1, // 禁用
+				MaxEdges:     -1,
+				MaxEntities:  -1,
+				MaxEpisodes:  -1,
+			},
+		}
+		c := domain.NewRecallContext(context.Background(), req)
+
+		chain := domain.NewRecallChain()
+		chain.Use(action)
+		chain.Run(c)
+
+		assert.Empty(t, searchTypes) // 所有类型都被禁用，不应有搜索
+	})
+}
+
+// TestRetrievalAction_WithStores 测试 WithStores 方法
+func TestRetrievalAction_WithStores(t *testing.T) {
+	mockVector := NewMockVectorStore()
+	mockGraph := NewMockGraphStore()
+
+	action := NewRetrievalAction()
+	result := action.WithStores(mockVector, mockGraph)
+
+	assert.Same(t, action, result) // 返回自身，支持链式调用
 }

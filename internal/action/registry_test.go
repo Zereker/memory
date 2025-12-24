@@ -269,3 +269,7 @@ func TestInferUserAndAgent(t *testing.T) {
 		assert.Equal(t, "assistant", agentID)
 	})
 }
+
+// Note: Memory.Add and Memory.Retrieve require integration tests with external services
+// (genkit, OpenSearch, Neo4j) as they create actions internally without mock injection.
+// These methods are tested via integration tests or manual testing.

@@ -30,8 +30,8 @@ var _ domain.RecallAction = (*RetrievalAction)(nil)
 type RetrievalAction struct {
 	*BaseAction
 
-	vectorStore *storage.OpenSearchStore
-	graphStore  *graph.Neo4jStore
+	vectorStore VectorSearchStore
+	graphStore  GraphSearchStore
 }
 
 // NewRetrievalAction 创建 RetrievalAction
@@ -41,6 +41,13 @@ func NewRetrievalAction() *RetrievalAction {
 		vectorStore: storage.NewStore(),
 		graphStore:  graph.NewStore(),
 	}
+}
+
+// WithStores 设置存储（用于测试注入 mock）
+func (a *RetrievalAction) WithStores(vector VectorSearchStore, graph GraphSearchStore) *RetrievalAction {
+	a.vectorStore = vector
+	a.graphStore = graph
+	return a
 }
 
 // Name 返回 action 名称
