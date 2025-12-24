@@ -23,14 +23,25 @@ var (
 	testHelper *BaseAction
 )
 
+// skipIntegrationTests 标记是否跳过集成测试
+var skipIntegrationTests bool
+
 // TestMain 统一初始化测试依赖，避免多次初始化
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
+	// 从环境变量读取 API Key
+	apiKey := os.Getenv("ARK_API_KEY")
+	if apiKey == "" {
+		log.Println("ARK_API_KEY not set, skipping integration tests")
+		skipIntegrationTests = true
+		os.Exit(0) // 跳过所有测试
+	}
+
 	// 初始化 Genkit：Ark 用于 LLM 和 Embedding
 	err := genkitpkg.Init(ctx, genkitpkg.Config{
 		Ark: genkitpkg.ArkConfig{
-			APIKey:  "", // Set your API key here or via environment
+			APIKey:  apiKey,
 			BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
 			Models: []genkitpkg.ModelConfig{
 				{

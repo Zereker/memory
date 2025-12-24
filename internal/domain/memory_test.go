@@ -112,14 +112,14 @@ func TestBaseContext(t *testing.T) {
 		assert.Equal(t, 2, len(ctx.Edges))
 	})
 
-	t.Run("add communities", func(t *testing.T) {
+	t.Run("add summaries", func(t *testing.T) {
 		ctx := NewAddContext(context.Background(), "agent_1", "user_1", "session_1")
 
-		assert.Empty(t, ctx.Communities)
+		assert.Empty(t, ctx.Summaries)
 
-		ctx.AddCommunities(Community{ID: "comm_1", Summary: "test1"})
-		ctx.AddCommunities(Community{ID: "comm_2", Summary: "test2"})
-		assert.Equal(t, 2, len(ctx.Communities))
+		ctx.AddSummaries(Summary{ID: "sum_1", Content: "test1"})
+		ctx.AddSummaries(Summary{ID: "sum_2", Content: "test2"})
+		assert.Equal(t, 2, len(ctx.Summaries))
 	})
 }
 
@@ -173,9 +173,9 @@ func TestRecallContext(t *testing.T) {
 			Query:     "用户的职业",
 			Limit:     10,
 			Options: RetrieveOptions{
-				IncludeEpisodes: true,
-				IncludeEntities: true,
-				MaxHops:         2,
+				MaxEpisodes: 5,
+				MaxEntities: 3,
+				MaxHops:     2,
 			},
 		}
 
@@ -186,8 +186,8 @@ func TestRecallContext(t *testing.T) {
 		assert.Equal(t, "session_1", ctx.SessionID)
 		assert.Equal(t, "用户的职业", ctx.Query)
 		assert.Equal(t, 10, ctx.Limit)
-		assert.True(t, ctx.Options.IncludeEpisodes)
-		assert.True(t, ctx.Options.IncludeEntities)
+		assert.Equal(t, 5, ctx.Options.MaxEpisodes)
+		assert.Equal(t, 3, ctx.Options.MaxEntities)
 		assert.Equal(t, 2, ctx.Options.MaxHops)
 	})
 
@@ -214,7 +214,7 @@ func TestRecallContext(t *testing.T) {
 		ctx.Episodes = []Episode{{ID: "ep_1"}, {ID: "ep_2"}}
 		ctx.Entities = []Entity{{ID: "ent_1"}}
 		ctx.Edges = []Edge{{ID: "edge_1"}, {ID: "edge_2"}, {ID: "edge_3"}}
-		ctx.Communities = []Community{{ID: "comm_1"}}
+		ctx.Summaries = []Summary{{ID: "sum_1"}}
 
 		assert.Equal(t, 7, ctx.TotalResults())
 	})

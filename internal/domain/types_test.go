@@ -182,24 +182,24 @@ func TestEdgeIsValid(t *testing.T) {
 	})
 }
 
-func TestCommunity(t *testing.T) {
-	t.Run("create community", func(t *testing.T) {
+func TestSummary(t *testing.T) {
+	t.Run("create summary", func(t *testing.T) {
 		now := time.Now()
-		community := Community{
-			ID:        "comm_123",
-			AgentID:   "agent_1",
-			UserID:    "user_1",
-			EntityIDs: []string{"ent_1", "ent_2", "ent_3"},
-			Summary:   "用户的工作相关信息",
-			Topics:    []string{"工作", "职业", "技能"},
-			CreatedAt: now,
-			UpdatedAt: now,
+		summary := Summary{
+			ID:         "sum_123",
+			AgentID:    "agent_1",
+			UserID:     "user_1",
+			EpisodeIDs: []string{"ep_1", "ep_2"},
+			Content:    "用户的工作相关信息",
+			Topic:      "工作",
+			CreatedAt:  now,
+			UpdatedAt:  now,
 		}
 
-		assert.Equal(t, "comm_123", community.ID)
-		assert.Equal(t, 3, len(community.EntityIDs))
-		assert.Equal(t, "用户的工作相关信息", community.Summary)
-		assert.Contains(t, community.Topics, "工作")
+		assert.Equal(t, "sum_123", summary.ID)
+		assert.Equal(t, "agent_1", summary.AgentID)
+		assert.Equal(t, "用户的工作相关信息", summary.Content)
+		assert.Equal(t, 2, len(summary.EpisodeIDs))
 	})
 }
 
@@ -331,18 +331,18 @@ func TestRetrieveRequest(t *testing.T) {
 			Query:     "用户的职业是什么",
 			Limit:     5,
 			Options: RetrieveOptions{
-				IncludeEpisodes:    true,
-				IncludeEntities:    true,
-				IncludeEdges:       true,
-				IncludeCommunities: false,
-				MaxHops:            2,
+				MaxEpisodes:  10,
+				MaxEntities:  5,
+				MaxEdges:     8,
+				MaxSummaries: 3,
+				MaxHops:      2,
 			},
 		}
 
-		assert.True(t, req.Options.IncludeEpisodes)
-		assert.True(t, req.Options.IncludeEntities)
-		assert.True(t, req.Options.IncludeEdges)
-		assert.False(t, req.Options.IncludeCommunities)
+		assert.Equal(t, 10, req.Options.MaxEpisodes)
+		assert.Equal(t, 5, req.Options.MaxEntities)
+		assert.Equal(t, 8, req.Options.MaxEdges)
+		assert.Equal(t, 3, req.Options.MaxSummaries)
 		assert.Equal(t, 2, req.Options.MaxHops)
 	})
 
@@ -354,7 +354,7 @@ func TestRetrieveRequest(t *testing.T) {
 		}
 
 		assert.Equal(t, 0, req.Limit)
-		assert.False(t, req.Options.IncludeEpisodes)
+		assert.Equal(t, 0, req.Options.MaxEpisodes)
 	})
 }
 
@@ -403,51 +403,3 @@ func TestRetrieveResponse(t *testing.T) {
 	assert.Contains(t, resp.MemoryContext, "fact1")
 }
 
-func TestExtractionResult(t *testing.T) {
-	result := ExtractionResult{
-		Entities: []ExtractedEntity{
-			{Name: "张三", Type: "person", Description: "用户的朋友"},
-			{Name: "星巴克", Type: "place", Description: "咖啡店"},
-		},
-		Relations: []ExtractedRelation{
-			{Subject: "张三", Predicate: "去过", Object: "星巴克", Fact: "张三去过星巴克"},
-		},
-	}
-
-	assert.Equal(t, 2, len(result.Entities))
-	assert.Equal(t, 1, len(result.Relations))
-	assert.Equal(t, "张三", result.Entities[0].Name)
-	assert.Equal(t, "张三去过星巴克", result.Relations[0].Fact)
-}
-
-func TestCommunityResult(t *testing.T) {
-	t.Run("detected communities", func(t *testing.T) {
-		result := CommunityResult{
-			Communities: []DetectedCommunity{
-				{
-					EntityNames: []string{"张三", "李四", "王五"},
-					Summary:     "用户的朋友圈",
-					Topics:      []string{"社交", "朋友"},
-				},
-				{
-					EntityNames: []string{"星巴克", "咖啡"},
-					Summary:     "用户喜欢的咖啡相关事物",
-					Topics:      []string{"咖啡", "饮品"},
-				},
-			},
-		}
-
-		assert.Equal(t, 2, len(result.Communities))
-		assert.Equal(t, 3, len(result.Communities[0].EntityNames))
-		assert.Equal(t, "用户的朋友圈", result.Communities[0].Summary)
-		assert.Contains(t, result.Communities[0].Topics, "社交")
-	})
-
-	t.Run("empty communities", func(t *testing.T) {
-		result := CommunityResult{
-			Communities: []DetectedCommunity{},
-		}
-
-		assert.Empty(t, result.Communities)
-	})
-}
