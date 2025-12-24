@@ -114,7 +114,7 @@ func (s *Server) RunStdio(ctx context.Context) error {
 		// Parse request
 		var req jsonRPCRequest
 		if err := json.Unmarshal(line, &req); err != nil {
-			s.writeError(writer, nil, -32700, "Parse error", err.Error())
+			_ = s.writeError(writer, nil, -32700, "Parse error", err.Error())
 			continue
 		}
 
@@ -158,7 +158,7 @@ func (s *Server) handleRequest(ctx context.Context, req *jsonRPCRequest) *jsonRP
 func (s *Server) handleInitialize(req *jsonRPCRequest) *jsonRPCResponse {
 	var params initializeParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &params)
+		_ = json.Unmarshal(req.Params, &params)
 	}
 
 	s.logger.Info("initialize",
@@ -218,10 +218,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonRPCRequest) *json
 
 	s.logger.Info("tools/call", "tool", params.Name)
 
-	toolReq := ToolCallRequest{
-		Name:      params.Name,
-		Arguments: params.Arguments,
-	}
+	toolReq := ToolCallRequest(params)
 
 	result := s.handler.HandleToolCall(ctx, toolReq)
 
