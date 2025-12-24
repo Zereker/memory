@@ -207,7 +207,7 @@ func (s *Server) runHTTPServer(ctx context.Context) error {
 	// Shutdown when context is cancelled
 	go func() {
 		<-ctx.Done()
-		srv.Shutdown(context.Background())
+		_ = srv.Shutdown(context.Background())
 	}()
 
 	if err := srv.Start(); err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {

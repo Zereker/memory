@@ -25,7 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}
-	defer srv.Shutdown()
+	defer func() { _ = srv.Shutdown() }()
 
 	if err = srv.Start(); err != nil {
 		log.Fatalf("failed to run server: %v", err)
