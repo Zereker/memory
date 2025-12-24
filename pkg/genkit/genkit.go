@@ -88,6 +88,27 @@ func Init(ctx context.Context, cfg Config) error {
 	return nil
 }
 
+// InitForTest initializes genkit with a mock plugin for testing.
+// Returns the mock plugin for configuring responses.
+func InitForTest(ctx context.Context, cfg MockConfig, promptDir string) *MockPlugin {
+	mockPlugin := NewMockPlugin(cfg)
+
+	g = genkit.Init(ctx,
+		genkit.WithPlugins(mockPlugin),
+		genkit.WithPromptDir(promptDir),
+	)
+
+	return mockPlugin
+}
+
+// InitWithPlugins initializes genkit with custom plugins (for testing or custom setups)
+func InitWithPlugins(ctx context.Context, plugins []api.Plugin, promptDir string) {
+	g = genkit.Init(ctx,
+		genkit.WithPlugins(plugins...),
+		genkit.WithPromptDir(promptDir),
+	)
+}
+
 // Genkit returns the Genkit instance
 func Genkit() *genkit.Genkit {
 	return g
