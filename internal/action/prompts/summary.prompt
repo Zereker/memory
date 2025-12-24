@@ -1,0 +1,28 @@
+---
+model: ark/doubao-pro-32k
+config:
+  temperature: 0.3
+input:
+  schema:
+    conversation: string
+    language: string
+output:
+  format: json
+  schema:
+    content: string
+---
+
+# Task
+将以下对话压缩为简洁摘要，保留关键信息。
+
+# Constraints
+- 使用 {{language}} 输出
+- 摘要应简洁，1-2句话
+- 保留关键事实、人名、地点、时间
+- 只输出用户相关的信息，不包含 AI 助手的回复
+
+# Output Format
+{"content":"摘要内容"}
+
+# Input
+{{conversation}}

@@ -1,0 +1,19 @@
+---
+model: ark/doubao-pro-32k
+config:
+  temperature: 0.2
+input:
+  schema:
+    content: string
+    language: string
+output:
+  format: json
+---
+
+为以下内容生成一个简短的主题标签（2-4字）。使用{{language}}输出。
+
+# Output Format
+{"topic":"主题标签"}
+
+# Input
+{{content}}

@@ -1,0 +1,52 @@
+# Memory Systems Platform Configuration
+# Copy this file to config.toml and fill in your credentials
+
+[server]
+mode = "http"  # http, mcp, or both
+port = 8080
+
+[log]
+path = "logs"
+rotation_time = "24h"
+max_age = "168h"
+default_pattern = "memory-%Y-%m-%d.log"
+level = "debug"
+format = "json"
+
+# ============== Genkit Models Configuration ==============
+# All LLM and Embedding models are configured per vendor
+# Each vendor section contains its own models array
+
+[genkit]
+prompt_dir = "internal/action/prompts"
+
+# ============== Ark Vendor ==============
+[genkit.ark]
+api_key = ""  # Your Ark API key
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+
+[[genkit.ark.models]]
+name = "doubao-pro-32k"
+type = "llm"
+model = "doubao-pro-32k"
+
+[[genkit.ark.models]]
+name = "doubao-embedding-text-240715"
+type = "embedding"
+model = "doubao-embedding-text-240715"
+dim = 2560
+
+# ============== Storage Configuration ==============
+[storage]
+addresses = ["http://localhost:9200"]
+username = ""  # OpenSearch username (optional)
+password = ""  # OpenSearch password (optional)
+index = "memories"
+embedding_dim = 2560
+
+[neo4j]
+enabled = true
+uri = "bolt://localhost:7687"
+username = "neo4j"
+password = ""  # Your Neo4j password
+database = "neo4j"
