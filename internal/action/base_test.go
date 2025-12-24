@@ -254,3 +254,140 @@ func TestBaseAction_DocToSummary(t *testing.T) {
 	assert.Equal(t, "主题", summary.Topic)
 	assert.Len(t, summary.EpisodeIDs, 2)
 }
+
+func TestBaseAction_DocToEpisode_EmptyDoc(t *testing.T) {
+	action := NewBaseAction("test")
+	ep := action.DocToEpisode(map[string]any{})
+	assert.NotNil(t, ep)
+	assert.Empty(t, ep.ID)
+}
+
+func TestBaseAction_DocToSummary_EmptyDoc(t *testing.T) {
+	action := NewBaseAction("test")
+	s := action.DocToSummary(map[string]any{})
+	assert.NotNil(t, s)
+	assert.Empty(t, s.ID)
+}
+
+func TestBaseAction_DocToEdge_EmptyDoc(t *testing.T) {
+	action := NewBaseAction("test")
+	e := action.DocToEdge(map[string]any{})
+	assert.NotNil(t, e)
+	assert.Empty(t, e.ID)
+}
+
+func TestBaseAction_DocToEntity_EmptyDoc(t *testing.T) {
+	action := NewBaseAction("test")
+	entity := action.DocToEntity(map[string]any{})
+	assert.NotNil(t, entity)
+	assert.Empty(t, entity.ID)
+}
+
+func TestBaseAction_DocToEdge_WithStringSlice(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":          "edge_123",
+		"episode_ids": []string{"ep_1", "ep_2"}, // []string instead of []any
+	}
+
+	edge := action.DocToEdge(doc)
+	assert.Equal(t, "edge_123", edge.ID)
+	assert.Len(t, edge.EpisodeIDs, 2)
+}
+
+func TestBaseAction_DocToSummary_WithStringSlice(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":          "sum_123",
+		"episode_ids": []string{"ep_1", "ep_2"}, // []string instead of []any
+	}
+
+	summary := action.DocToSummary(doc)
+	assert.Equal(t, "sum_123", summary.ID)
+	assert.Len(t, summary.EpisodeIDs, 2)
+}
+
+func TestBaseAction_timeHook_AlreadyTime(t *testing.T) {
+	action := NewBaseAction("test")
+	now := time.Now()
+
+	doc := map[string]any{
+		"id":         "ep_123",
+		"created_at": now,
+	}
+
+	ep := action.DocToEpisode(doc)
+	assert.True(t, ep.CreatedAt.Equal(now))
+}
+
+func TestBaseAction_timeHook_InvalidFormat(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":         "ep_123",
+		"created_at": "invalid-time-format",
+	}
+
+	// Should not panic, just return empty time
+	ep := action.DocToEpisode(doc)
+	assert.NotNil(t, ep)
+}
+
+func TestBaseAction_timeHook_MultipleFormats(t *testing.T) {
+	action := NewBaseAction("test")
+
+	formats := []string{
+		"2024-01-15T10:30:00Z",          // RFC3339
+		"2024-01-15T10:30:00.123456789Z", // RFC3339Nano
+		"2024-01-15T10:30:00",           // Without timezone
+		"2024-01-15 10:30:00",           // Space separator
+		"2024-01-15",                    // Date only
+	}
+
+	for _, format := range formats {
+		t.Run(format, func(t *testing.T) {
+			doc := map[string]any{
+				"id":         "ep_123",
+				"created_at": format,
+			}
+			ep := action.DocToEpisode(doc)
+			assert.False(t, ep.CreatedAt.IsZero(), "failed to parse: %s", format)
+		})
+	}
+}
+
+func TestBaseAction_float32SliceHook_NonSliceData(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":                "ep_123",
+		"content_embedding": "not a slice",
+	}
+
+	ep := action.DocToEpisode(doc)
+	assert.Nil(t, ep.Embedding)
+}
+
+func TestBaseAction_stringSliceHook_NonSliceData(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":          "edge_123",
+		"episode_ids": 123, // not a slice, not a string
+	}
+
+	edge := action.DocToEdge(doc)
+	// mapstructure with WeaklyTypedInput may convert to empty slice
+	assert.NotNil(t, edge)
+}
+
+func TestBaseAction_stringSliceHook_MixedTypes(t *testing.T) {
+	action := NewBaseAction("test")
+	doc := map[string]any{
+		"id":          "edge_123",
+		"episode_ids": []any{"ep_1", 123, "ep_2"}, // mixed types
+	}
+
+	edge := action.DocToEdge(doc)
+	// Only strings should be extracted
+	assert.Len(t, edge.EpisodeIDs, 2)
+	assert.Equal(t, "ep_1", edge.EpisodeIDs[0])
+	assert.Equal(t, "ep_2", edge.EpisodeIDs[1])
+}

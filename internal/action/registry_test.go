@@ -209,3 +209,63 @@ func TestActionChainWithError(t *testing.T) {
 	assert.Equal(t, "error", executed[0])
 	assert.Error(t, c.Error())
 }
+
+// TestNewMemory 测试 Memory 创建
+func TestNewMemory(t *testing.T) {
+	m := NewMemory()
+	assert.NotNil(t, m)
+	assert.NotNil(t, m.logger)
+}
+
+// TestMemory_Delete 测试删除方法
+func TestMemory_Delete(t *testing.T) {
+	m := NewMemory()
+	err := m.Delete(context.Background(), "test_id")
+	assert.NoError(t, err) // 当前实现是空操作
+}
+
+// TestInferUserAndAgent 测试用户代理推断
+func TestInferUserAndAgent(t *testing.T) {
+	t.Run("explicit ids", func(t *testing.T) {
+		req := &domain.AddRequest{
+			AgentID: "agent_explicit",
+			UserID:  "user_explicit",
+		}
+		userID, agentID := inferUserAndAgent(req)
+		assert.Equal(t, "user_explicit", userID)
+		assert.Equal(t, "agent_explicit", agentID)
+	})
+
+	t.Run("infer from messages", func(t *testing.T) {
+		req := &domain.AddRequest{
+			Messages: []domain.Message{
+				{Role: domain.RoleUser, Name: "张三", Content: "你好"},
+				{Role: domain.RoleAssistant, Name: "AI助手", Content: "你好！"},
+			},
+		}
+		userID, agentID := inferUserAndAgent(req)
+		assert.Equal(t, "张三", userID)
+		assert.Equal(t, "AI助手", agentID)
+	})
+
+	t.Run("partial ids", func(t *testing.T) {
+		req := &domain.AddRequest{
+			AgentID: "agent_explicit",
+			Messages: []domain.Message{
+				{Role: domain.RoleUser, Name: "张三", Content: "你好"},
+			},
+		}
+		userID, agentID := inferUserAndAgent(req)
+		assert.Equal(t, "张三", userID)
+		assert.Equal(t, "agent_explicit", agentID)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		req := &domain.AddRequest{}
+		userID, agentID := inferUserAndAgent(req)
+		// When no explicit IDs and no messages, Messages.UserName() returns "user"
+		// and Messages.AssistantName() returns "assistant" as defaults
+		assert.Equal(t, "user", userID)
+		assert.Equal(t, "assistant", agentID)
+	})
+}

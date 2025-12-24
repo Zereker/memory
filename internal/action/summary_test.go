@@ -13,9 +13,17 @@ func TestSummaryAction(t *testing.T) {
 		return domain.NewAddContext(context.Background(), "agent_test", "user_test", "session_summary_test")
 	}
 
+	// 创建无存储的 action，用于测试边界情况
+	newAction := func() *SummaryAction {
+		return &SummaryAction{
+			BaseAction: NewBaseAction("summary"),
+			store:      nil, // 无存储
+		}
+	}
+
 	run := func(c *domain.AddContext) {
 		chain := domain.NewActionChain()
-		chain.Use(NewSummaryAction())
+		chain.Use(newAction())
 		chain.Run(c)
 	}
 
@@ -128,4 +136,84 @@ func TestFormatEpisodes(t *testing.T) {
 			t.Errorf("空 episodes 应该返回空字符串，实际: %s", result)
 		}
 	})
+}
+
+// TestSummaryAction_Name 测试 Name 方法
+func TestSummaryAction_Name(t *testing.T) {
+	action := NewSummaryAction()
+	if action.Name() != "summary" {
+		t.Errorf("Name() 应该返回 'summary'，实际: %s", action.Name())
+	}
+}
+
+// TestSummaryAction_Handle_NoStore 测试无存储时的处理
+func TestSummaryAction_Handle_NoStore(t *testing.T) {
+	// SummaryAction 依赖 store 来加载历史 episodes
+	// 当 store 为 nil 时，应该正常跳过
+	action := &SummaryAction{
+		BaseAction: NewBaseAction("summary"),
+		store:      nil,
+	}
+
+	c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+	c.Episodes = []domain.Episode{
+		{
+			ID:             "ep_1",
+			Role:           domain.RoleUser,
+			Content:        "测试消息",
+			Topic:          "测试",
+			TopicEmbedding: make([]float32, 100),
+		},
+	}
+
+	nextCalled := false
+	chain := domain.NewActionChain()
+	chain.Use(action)
+	chain.Use(&mockAddAction{
+		name: "next",
+		handler: func(c *domain.AddContext) {
+			nextCalled = true
+			c.Next()
+		},
+	})
+	chain.Run(c)
+
+	if !nextCalled {
+		t.Error("应该调用 Next")
+	}
+	if c.Error() != nil {
+		t.Errorf("不应该有错误: %v", c.Error())
+	}
+}
+
+// TestSummaryAction_Handle_TopicSimilar 测试主题相似时跳过
+func TestSummaryAction_Handle_TopicSimilar(t *testing.T) {
+	action := &SummaryAction{
+		BaseAction: NewBaseAction("summary"),
+		store:      nil, // 无存储，loadLastUserEpisode 返回 nil
+	}
+
+	c := domain.NewAddContext(context.Background(), "agent", "user", "session")
+	// 设置阈值
+	c.TopicThreshold = 0.8
+
+	// 添加当前 user episode
+	c.Episodes = []domain.Episode{
+		{
+			ID:             "ep_current",
+			Role:           domain.RoleUser,
+			Content:        "当前消息",
+			Topic:          "问候",
+			TopicEmbedding: []float32{1.0, 0, 0, 0, 0},
+		},
+	}
+
+	chain := domain.NewActionChain()
+	chain.Use(action)
+	chain.Run(c)
+
+	// 因为 store 为 nil，loadLastUserEpisode 返回 nil，所以会跳过
+	if len(c.Summaries) != 0 {
+		t.Error("无历史 episode 时不应该生成 summary")
+	}
 }

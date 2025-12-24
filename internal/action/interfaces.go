@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Zereker/memory/internal/domain"
+	"github.com/Zereker/memory/pkg/storage"
 )
 
 // LLMClient 用于测试注入的 LLM 客户端接口
@@ -20,6 +21,20 @@ type LLMClient interface {
 type VectorStore interface {
 	// Store 存储文档
 	Store(ctx context.Context, id string, doc map[string]any) error
+}
+
+// VectorSearchStore 定义向量搜索存储接口（用于检索）
+type VectorSearchStore interface {
+	VectorStore
+	// Search 向量搜索
+	Search(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error)
+}
+
+// GraphSearchStore 定义图搜索存储接口（用于检索）
+type GraphSearchStore interface {
+	GraphStore
+	// Traverse 图遍历
+	Traverse(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error)
 }
 
 // GraphStore 定义图存储接口

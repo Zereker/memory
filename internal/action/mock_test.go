@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/Zereker/memory/internal/domain"
+	"github.com/Zereker/memory/pkg/storage"
 )
 
 // MockLLMClient 用于测试的 LLM mock
@@ -90,12 +91,11 @@ func (m *MockLLMClient) WithEpisodeResult(topic string, significance int) *MockL
 
 // MockVectorStore 用于测试的向量存储 mock
 type MockVectorStore struct {
-	StoreFunc func(ctx context.Context, id string, doc map[string]any) error
+	StoreFunc  func(ctx context.Context, id string, doc map[string]any) error
+	SearchFunc func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error)
 
-	StoreCalls []struct {
-		ID  string
-		Doc map[string]any
-	}
+	StoreCalls  []struct{ ID string; Doc map[string]any }
+	SearchCalls []storage.SearchQuery
 }
 
 func NewMockVectorStore() *MockVectorStore {
@@ -103,24 +103,31 @@ func NewMockVectorStore() *MockVectorStore {
 		StoreFunc: func(ctx context.Context, id string, doc map[string]any) error {
 			return nil
 		},
+		SearchFunc: func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+			return nil, nil
+		},
 	}
 }
 
 func (m *MockVectorStore) Store(ctx context.Context, id string, doc map[string]any) error {
-	m.StoreCalls = append(m.StoreCalls, struct {
-		ID  string
-		Doc map[string]any
-	}{id, doc})
+	m.StoreCalls = append(m.StoreCalls, struct{ ID string; Doc map[string]any }{id, doc})
 	return m.StoreFunc(ctx, id, doc)
+}
+
+func (m *MockVectorStore) Search(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+	m.SearchCalls = append(m.SearchCalls, query)
+	return m.SearchFunc(ctx, query)
 }
 
 // MockGraphStore 用于测试的图存储 mock
 type MockGraphStore struct {
 	MergeNodeFunc          func(ctx context.Context, labels []string, mergeKey string, mergeValue any, properties map[string]any) error
 	CreateRelationshipFunc func(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error
+	TraverseFunc           func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error)
 
 	MergeNodeCalls          []map[string]any
 	CreateRelationshipCalls []map[string]any
+	TraverseCalls           []map[string]any
 }
 
 func NewMockGraphStore() *MockGraphStore {
@@ -130,6 +137,9 @@ func NewMockGraphStore() *MockGraphStore {
 		},
 		CreateRelationshipFunc: func(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error {
 			return nil
+		},
+		TraverseFunc: func(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+			return nil, nil
 		},
 	}
 }
@@ -156,4 +166,17 @@ func (m *MockGraphStore) CreateRelationship(ctx context.Context, fromLabel, from
 		"properties": properties,
 	})
 	return m.CreateRelationshipFunc(ctx, fromLabel, fromKey, fromValue, toLabel, toKey, toValue, relType, properties)
+}
+
+func (m *MockGraphStore) Traverse(ctx context.Context, startLabel, startKey string, startValue any, relTypes []string, direction string, maxDepth, limit int) ([]map[string]any, error) {
+	m.TraverseCalls = append(m.TraverseCalls, map[string]any{
+		"startLabel": startLabel,
+		"startKey":   startKey,
+		"startValue": startValue,
+		"relTypes":   relTypes,
+		"direction":  direction,
+		"maxDepth":   maxDepth,
+		"limit":      limit,
+	})
+	return m.TraverseFunc(ctx, startLabel, startKey, startValue, relTypes, direction, maxDepth, limit)
 }

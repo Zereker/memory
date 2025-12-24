@@ -18,7 +18,7 @@ var _ domain.AddAction = (*SummaryAction)(nil)
 // 检测主题变化并生成摘要
 type SummaryAction struct {
 	*BaseAction
-	store *storage.OpenSearchStore
+	store VectorSearchStore
 }
 
 // NewSummaryAction 创建 SummaryAction
@@ -27,6 +27,12 @@ func NewSummaryAction() *SummaryAction {
 		BaseAction: NewBaseAction("summary"),
 		store:      storage.NewStore(),
 	}
+}
+
+// WithStore 设置存储（用于测试注入 mock）
+func (a *SummaryAction) WithStore(store VectorSearchStore) *SummaryAction {
+	a.store = store
+	return a
 }
 
 // Name 返回 action 名称
