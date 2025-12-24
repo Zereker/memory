@@ -2,8 +2,8 @@ package graph
 
 import "context"
 
-// GraphStore defines the interface for graph storage operations
-type GraphStore interface {
+// Store defines the interface for graph storage operations
+type Store interface {
 	// MergeNode creates or updates a node based on a match key
 	MergeNode(ctx context.Context, labels []string, matchKey string, matchValue any, properties map[string]any) error
 

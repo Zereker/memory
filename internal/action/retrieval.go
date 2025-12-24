@@ -31,7 +31,7 @@ type RetrievalAction struct {
 	*BaseAction
 
 	vectorStore storage.VectorStore
-	graphStore  graph.GraphStore
+	graphStore  graph.Store
 }
 
 // NewRetrievalAction 创建 RetrievalAction
@@ -44,7 +44,7 @@ func NewRetrievalAction() *RetrievalAction {
 }
 
 // WithStores 设置存储（用于测试注入 mock）
-func (a *RetrievalAction) WithStores(vector storage.VectorStore, graphStore graph.GraphStore) *RetrievalAction {
+func (a *RetrievalAction) WithStores(vector storage.VectorStore, graphStore graph.Store) *RetrievalAction {
 	a.vectorStore = vector
 	a.graphStore = graphStore
 	return a

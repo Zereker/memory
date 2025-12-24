@@ -24,7 +24,7 @@ type ExtractionAction struct {
 	*BaseAction
 
 	vectorStore storage.VectorStore
-	graphStore  graph.GraphStore
+	graphStore  graph.Store
 }
 
 // NewExtractionAction 创建 ExtractionAction
@@ -37,7 +37,7 @@ func NewExtractionAction() *ExtractionAction {
 }
 
 // WithStores 设置存储（用于测试注入 mock）
-func (a *ExtractionAction) WithStores(vectorStore storage.VectorStore, graphStore graph.GraphStore) *ExtractionAction {
+func (a *ExtractionAction) WithStores(vectorStore storage.VectorStore, graphStore graph.Store) *ExtractionAction {
 	a.vectorStore = vectorStore
 	a.graphStore = graphStore
 	return a

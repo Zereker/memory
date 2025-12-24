@@ -66,7 +66,7 @@ func (m *MockVectorStore) Close() error {
 }
 
 // MockGraphStore 用于测试的图存储 mock
-// 实现 graph.GraphStore 接口
+// 实现 graph.Store 接口
 type MockGraphStore struct {
 	MergeNodeFunc          func(ctx context.Context, labels []string, mergeKey string, mergeValue any, properties map[string]any) error
 	CreateRelationshipFunc func(ctx context.Context, fromLabel, fromKey string, fromValue any, toLabel, toKey string, toValue any, relType string, properties map[string]any) error
