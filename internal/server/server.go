@@ -20,7 +20,7 @@ import (
 	"github.com/Zereker/memory/pkg/log"
 	"github.com/Zereker/memory/pkg/mq"
 	"github.com/Zereker/memory/pkg/redis"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // Server represents the memory server
@@ -28,7 +28,7 @@ type Server struct {
 	config   Config
 	logger   *slog.Logger
 	memory   *action.Memory
-	store    *storage.OpenSearchStore
+	store    *vector.OpenSearchStore
 	consumer *consumer.Consumer
 }
 
@@ -74,10 +74,10 @@ func (s *Server) initDepend() error {
 
 	// Initialize OpenSearch storage singleton
 	s.logger.Info("initializing storage")
-	if err := storage.Init(s.config.Storage); err != nil {
+	if err := vector.Init(s.config.Storage); err != nil {
 		return errors.WithMessage(err, "failed to init storage")
 	}
-	s.store = storage.NewStore()
+	s.store = vector.NewStore()
 
 	// Initialize Neo4j graph store
 	s.logger.Info("initializing graph store")

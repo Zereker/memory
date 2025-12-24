@@ -7,7 +7,7 @@ import (
 
 	"github.com/Zereker/memory/internal/domain"
 	"github.com/Zereker/memory/pkg/graph"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // 默认预算配置
@@ -30,7 +30,7 @@ var _ domain.RecallAction = (*RetrievalAction)(nil)
 type RetrievalAction struct {
 	*BaseAction
 
-	vectorStore storage.VectorStore
+	vectorStore vector.Store
 	graphStore  graph.Store
 }
 
@@ -38,13 +38,13 @@ type RetrievalAction struct {
 func NewRetrievalAction() *RetrievalAction {
 	return &RetrievalAction{
 		BaseAction:  NewBaseAction("retrieval"),
-		vectorStore: storage.NewStore(),
+		vectorStore: vector.NewStore(),
 		graphStore:  graph.NewStore(),
 	}
 }
 
 // WithStores 设置存储（用于测试注入 mock）
-func (a *RetrievalAction) WithStores(vector storage.VectorStore, graphStore graph.Store) *RetrievalAction {
+func (a *RetrievalAction) WithStores(vector vector.Store, graphStore graph.Store) *RetrievalAction {
 	a.vectorStore = vector
 	a.graphStore = graphStore
 	return a
@@ -177,7 +177,7 @@ func (a *RetrievalAction) searchEpisodes(c *domain.RecallContext) {
 		return
 	}
 
-	docs, err := a.vectorStore.Search(c.Context, storage.SearchQuery{
+	docs, err := a.vectorStore.Search(c.Context, vector.SearchQuery{
 		Embedding: c.Embedding,
 		Filters: map[string]any{
 			"type":     domain.DocTypeEpisode,
@@ -207,7 +207,7 @@ func (a *RetrievalAction) searchSummaries(c *domain.RecallContext) {
 		return
 	}
 
-	docs, err := a.vectorStore.Search(c.Context, storage.SearchQuery{
+	docs, err := a.vectorStore.Search(c.Context, vector.SearchQuery{
 		Embedding: c.Embedding,
 		Filters: map[string]any{
 			"type":     domain.DocTypeSummary,
@@ -237,7 +237,7 @@ func (a *RetrievalAction) searchEdges(c *domain.RecallContext) {
 		return
 	}
 
-	docs, err := a.vectorStore.Search(c.Context, storage.SearchQuery{
+	docs, err := a.vectorStore.Search(c.Context, vector.SearchQuery{
 		Embedding: c.Embedding,
 		Filters: map[string]any{
 			"type":     domain.DocTypeEdge,
@@ -268,7 +268,7 @@ func (a *RetrievalAction) searchEntities(c *domain.RecallContext) {
 	}
 
 	// 使用向量检索锚定实体（Grounding）
-	docs, err := a.vectorStore.Search(c.Context, storage.SearchQuery{
+	docs, err := a.vectorStore.Search(c.Context, vector.SearchQuery{
 		Embedding: c.Embedding,
 		Filters: map[string]any{
 			"type":     domain.DocTypeEntity,

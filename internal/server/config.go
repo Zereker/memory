@@ -11,7 +11,7 @@ import (
 	"github.com/Zereker/memory/pkg/log"
 	"github.com/Zereker/memory/pkg/mq"
 	"github.com/Zereker/memory/pkg/redis"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // Config holds all configuration values
@@ -19,7 +19,7 @@ type Config struct {
 	Server  ServerConfig             `toml:"server"`
 	Log     log.Config               `toml:"log"`
 	Models  genkit.Config            `toml:"genkit"`
-	Storage storage.OpenSearchConfig `toml:"storage"`
+	Storage vector.OpenSearchConfig `toml:"storage"`
 	Neo4j   graph.Neo4jConfig        `toml:"neo4j"`
 	Kafka   mq.KafkaConfig           `toml:"kafka"`
 	Redis   redis.Config             `toml:"redis"`

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Zereker/memory/internal/domain"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // 确保实现 domain.AddAction 接口
@@ -18,19 +18,19 @@ var _ domain.AddAction = (*SummaryAction)(nil)
 // 检测主题变化并生成摘要
 type SummaryAction struct {
 	*BaseAction
-	store storage.VectorStore
+	store vector.Store
 }
 
 // NewSummaryAction 创建 SummaryAction
 func NewSummaryAction() *SummaryAction {
 	return &SummaryAction{
 		BaseAction: NewBaseAction("summary"),
-		store:      storage.NewStore(),
+		store:      vector.NewStore(),
 	}
 }
 
 // WithStore 设置存储（用于测试注入 mock）
-func (a *SummaryAction) WithStore(store storage.VectorStore) *SummaryAction {
+func (a *SummaryAction) WithStore(store vector.Store) *SummaryAction {
 	a.store = store
 	return a
 }
@@ -127,7 +127,7 @@ func (a *SummaryAction) loadLastUserEpisode(c *domain.AddContext, excludeID stri
 		return nil, nil
 	}
 
-	results, err := a.store.Search(c.Context, storage.SearchQuery{
+	results, err := a.store.Search(c.Context, vector.SearchQuery{
 		Filters: map[string]any{
 			"type":       domain.DocTypeEpisode,
 			"agent_id":   c.AgentID,
@@ -173,7 +173,7 @@ func (a *SummaryAction) loadEpisodesSinceLastSummary(c *domain.AddContext, exclu
 	}
 
 	// 1. 查询该用户最近的 Summary
-	summaries, _ := a.store.Search(c.Context, storage.SearchQuery{
+	summaries, _ := a.store.Search(c.Context, vector.SearchQuery{
 		Filters: map[string]any{
 			"type":     domain.DocTypeSummary,
 			"agent_id": c.AgentID,
@@ -183,7 +183,7 @@ func (a *SummaryAction) loadEpisodesSinceLastSummary(c *domain.AddContext, exclu
 	})
 
 	// 2. 构建 Episode 查询
-	episodeQuery := storage.SearchQuery{
+	episodeQuery := vector.SearchQuery{
 		Filters: map[string]any{
 			"type":       domain.DocTypeEpisode,
 			"agent_id":   c.AgentID,

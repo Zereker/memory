@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Zereker/memory/internal/domain"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // 确保实现 domain.AddAction 接口
@@ -18,19 +18,19 @@ var _ domain.AddAction = (*EpisodeStorageAction)(nil)
 type EpisodeStorageAction struct {
 	*BaseAction
 
-	vectorStore storage.VectorStore
+	vectorStore vector.Store
 }
 
 // NewEpisodeStorageAction 创建 EpisodeStorageAction
 func NewEpisodeStorageAction() *EpisodeStorageAction {
 	return &EpisodeStorageAction{
 		BaseAction:  NewBaseAction("episode_storage"),
-		vectorStore: storage.NewStore(),
+		vectorStore: vector.NewStore(),
 	}
 }
 
 // WithVectorStore 设置向量存储（用于测试注入 mock）
-func (a *EpisodeStorageAction) WithVectorStore(store storage.VectorStore) *EpisodeStorageAction {
+func (a *EpisodeStorageAction) WithVectorStore(store vector.Store) *EpisodeStorageAction {
 	a.vectorStore = store
 	return a
 }

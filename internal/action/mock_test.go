@@ -3,17 +3,17 @@ package action
 import (
 	"context"
 
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // MockVectorStore 用于测试的向量存储 mock
-// 实现 storage.VectorStore 接口
+// 实现 vector.Store 接口
 type MockVectorStore struct {
 	StoreFunc  func(ctx context.Context, id string, doc map[string]any) error
-	SearchFunc func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error)
+	SearchFunc func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error)
 
 	StoreCalls  []struct{ ID string; Doc map[string]any }
-	SearchCalls []storage.SearchQuery
+	SearchCalls []vector.SearchQuery
 }
 
 func NewMockVectorStore() *MockVectorStore {
@@ -21,7 +21,7 @@ func NewMockVectorStore() *MockVectorStore {
 		StoreFunc: func(ctx context.Context, id string, doc map[string]any) error {
 			return nil
 		},
-		SearchFunc: func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+		SearchFunc: func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 			return nil, nil
 		},
 	}
@@ -36,7 +36,7 @@ func (m *MockVectorStore) Get(ctx context.Context, id string) (map[string]any, e
 	return nil, nil
 }
 
-func (m *MockVectorStore) Search(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+func (m *MockVectorStore) Search(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 	m.SearchCalls = append(m.SearchCalls, query)
 	return m.SearchFunc(ctx, query)
 }

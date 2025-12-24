@@ -9,7 +9,7 @@ import (
 
 	"github.com/Zereker/memory/internal/domain"
 	"github.com/Zereker/memory/pkg/graph"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 const (
@@ -23,7 +23,7 @@ var _ domain.AddAction = (*ExtractionAction)(nil)
 type ExtractionAction struct {
 	*BaseAction
 
-	vectorStore storage.VectorStore
+	vectorStore vector.Store
 	graphStore  graph.Store
 }
 
@@ -31,13 +31,13 @@ type ExtractionAction struct {
 func NewExtractionAction() *ExtractionAction {
 	return &ExtractionAction{
 		BaseAction:  NewBaseAction("extraction"),
-		vectorStore: storage.NewStore(),
+		vectorStore: vector.NewStore(),
 		graphStore:  graph.NewStore(),
 	}
 }
 
 // WithStores 设置存储（用于测试注入 mock）
-func (a *ExtractionAction) WithStores(vectorStore storage.VectorStore, graphStore graph.Store) *ExtractionAction {
+func (a *ExtractionAction) WithStores(vectorStore vector.Store, graphStore graph.Store) *ExtractionAction {
 	a.vectorStore = vectorStore
 	a.graphStore = graphStore
 	return a

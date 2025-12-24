@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 func TestSummaryAction_Name(t *testing.T) {
@@ -57,7 +57,7 @@ func TestSummaryAction_Handle_WithTopicChange(t *testing.T) {
 
 	mockStore := NewMockVectorStore()
 	searchCount := 0
-	mockStore.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 		searchCount++
 		docType, _ := query.Filters["type"].(string)
 		if docType == domain.DocTypeEpisode && searchCount == 1 {

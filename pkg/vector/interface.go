@@ -1,11 +1,11 @@
-package storage
+package vector
 
 import "context"
 
-// VectorStore defines the generic interface for vector storage backends.
+// Store defines the interface for vector storage backends.
 // All methods work with map[string]any for maximum flexibility.
 // Domain-specific types should be converted at the application layer.
-type VectorStore interface {
+type Store interface {
 	// Store stores a document with the given ID
 	Store(ctx context.Context, id string, doc map[string]any) error
 

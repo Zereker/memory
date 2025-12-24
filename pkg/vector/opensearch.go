@@ -1,4 +1,4 @@
-package storage
+package vector
 
 import (
 	"bytes"

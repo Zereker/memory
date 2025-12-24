@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
-	"github.com/Zereker/memory/pkg/storage"
+	"github.com/Zereker/memory/pkg/vector"
 )
 
 // Note: These tests use MockPlugin to mock the LLM layer via genkit.
@@ -187,7 +187,7 @@ func TestIntegration_SummaryAction_EndToEnd(t *testing.T) {
 		// 创建 mock store 返回历史 episode
 		mockStore := NewMockVectorStore()
 		searchCount := 0
-		mockStore.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+		mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 			searchCount++
 			docType, _ := query.Filters["type"].(string)
 			if docType == domain.DocTypeEpisode && searchCount == 1 {
@@ -265,7 +265,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
 
 		mockVector := NewMockVectorStore()
-		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+		mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 			docType, _ := query.Filters["type"].(string)
 			switch docType {
 			case domain.DocTypeEpisode:
@@ -341,7 +341,7 @@ func TestIntegration_RetrievalAction_EndToEnd(t *testing.T) {
 		helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
 
 		mockVector := NewMockVectorStore()
-		mockVector.SearchFunc = func(ctx context.Context, query storage.SearchQuery) ([]map[string]any, error) {
+		mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
 			docType, _ := query.Filters["type"].(string)
 			if docType == domain.DocTypeEntity {
 				return []map[string]any{
