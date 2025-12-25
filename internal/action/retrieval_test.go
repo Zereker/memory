@@ -14,97 +14,100 @@ import (
 	"github.com/Zereker/memory/pkg/vector"
 )
 
-func TestRetrievalAction_Name(t *testing.T) {
-	ctx := context.Background()
-	_ = newTestHelper(ctx)
+func TestRetrievalAction_Basic(t *testing.T) {
+	t.Run("Name returns correct name", func(t *testing.T) {
+		ctx := context.Background()
+		_ = newTestHelper(ctx)
 
-	action := NewRetrievalAction()
-	assert.Equal(t, "retrieval", action.Name())
+		action := NewRetrievalAction()
+		assert.Equal(t, "retrieval", action.Name())
+	})
+
+	t.Run("WithStores returns same instance for chaining", func(t *testing.T) {
+		ctx := context.Background()
+		_ = newTestHelper(ctx)
+
+		mockVector := NewMockVectorStore()
+		mockGraph := NewMockGraphStore()
+
+		action := NewRetrievalAction()
+		result := action.WithStores(mockVector, mockGraph)
+
+		assert.Same(t, action, result, "should return same instance for chaining")
+	})
 }
 
-func TestRetrievalAction_WithStores(t *testing.T) {
-	ctx := context.Background()
-	_ = newTestHelper(ctx)
+func TestRetrievalAction_HandleRecall(t *testing.T) {
+	t.Run("WithResults retrieves all document types", func(t *testing.T) {
+		ctx := context.Background()
+		h := newTestHelper(ctx)
+		h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
 
-	mockVector := NewMockVectorStore()
-	mockGraph := NewMockGraphStore()
-
-	action := NewRetrievalAction()
-	result := action.WithStores(mockVector, mockGraph)
-
-	assert.Same(t, action, result)
-}
-
-func TestRetrievalAction_HandleRecall_WithResults(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		switch docType {
-		case domain.DocTypeEpisode:
-			return []map[string]any{
-				{"id": "ep_1", "type": domain.DocTypeEpisode, "role": domain.RoleUser, "content": "测试内容"},
-			}, nil
-		case domain.DocTypeSummary:
-			return []map[string]any{
-				{"id": "sum_1", "type": domain.DocTypeSummary, "topic": "工作", "content": "摘要内容"},
-			}, nil
-		case domain.DocTypeEdge:
-			return []map[string]any{
-				{"id": "edge_1", "type": domain.DocTypeEdge, "fact": "测试事实"},
-			}, nil
-		case domain.DocTypeEntity:
-			return []map[string]any{
-				{"id": "ent_1", "type": domain.DocTypeEntity, "name": "张三", "entity_type": "person"},
-			}, nil
+		mockVector := NewMockVectorStore()
+		mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
+			docType, _ := query.Filters["type"].(string)
+			switch docType {
+			case domain.DocTypeEpisode:
+				return []map[string]any{
+					{"id": "ep_1", "type": domain.DocTypeEpisode, "role": domain.RoleUser, "content": "测试内容"},
+				}, nil
+			case domain.DocTypeSummary:
+				return []map[string]any{
+					{"id": "sum_1", "type": domain.DocTypeSummary, "topic": "工作", "content": "摘要内容"},
+				}, nil
+			case domain.DocTypeEdge:
+				return []map[string]any{
+					{"id": "edge_1", "type": domain.DocTypeEdge, "fact": "测试事实"},
+				}, nil
+			case domain.DocTypeEntity:
+				return []map[string]any{
+					{"id": "ent_1", "type": domain.DocTypeEntity, "name": "张三", "entity_type": "person"},
+				}, nil
+			}
+			return nil, nil
 		}
-		return nil, nil
-	}
 
-	mockGraph := NewMockGraphStore()
+		mockGraph := NewMockGraphStore()
 
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, mockGraph)
+		action := NewRetrievalAction()
+		action.WithStores(mockVector, mockGraph)
 
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试查询",
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
+		req := &domain.RetrieveRequest{
+			AgentID: "agent",
+			UserID:  "user",
+			Query:   "测试查询",
+		}
+		recallCtx := domain.NewRecallContext(ctx, req)
 
-	action.HandleRecall(recallCtx)
+		action.HandleRecall(recallCtx)
 
-	assert.Len(t, recallCtx.Episodes, 1)
-	assert.Len(t, recallCtx.Summaries, 1)
-	assert.Len(t, recallCtx.Edges, 1)
-	assert.Len(t, recallCtx.Entities, 1)
-}
+		assert.Len(t, recallCtx.Episodes, 1, "should retrieve episodes")
+		assert.Len(t, recallCtx.Summaries, 1, "should retrieve summaries")
+		assert.Len(t, recallCtx.Edges, 1, "should retrieve edges")
+		assert.Len(t, recallCtx.Entities, 1, "should retrieve entities")
+	})
 
-func TestRetrievalAction_HandleRecall_EmptyQuery(t *testing.T) {
-	ctx := context.Background()
-	_ = newTestHelper(ctx)
+	t.Run("EmptyQuery returns no results", func(t *testing.T) {
+		ctx := context.Background()
+		_ = newTestHelper(ctx)
 
-	mockVector := NewMockVectorStore()
-	mockGraph := NewMockGraphStore()
+		mockVector := NewMockVectorStore()
+		mockGraph := NewMockGraphStore()
 
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, mockGraph)
+		action := NewRetrievalAction()
+		action.WithStores(mockVector, mockGraph)
 
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "", // empty query
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
+		req := &domain.RetrieveRequest{
+			AgentID: "agent",
+			UserID:  "user",
+			Query:   "",
+		}
+		recallCtx := domain.NewRecallContext(ctx, req)
 
-	action.HandleRecall(recallCtx)
+		action.HandleRecall(recallCtx)
 
-	// Empty query should result in no results
-	assert.Empty(t, recallCtx.Episodes)
+		assert.Empty(t, recallCtx.Episodes, "empty query should return no results")
+	})
 }
 
 func TestRetrievalAction_HandleRecall_WithGraphTraversal(t *testing.T) {

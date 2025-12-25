@@ -441,9 +441,10 @@ func TestBaseAction_timeHook_InvalidFormat(t *testing.T) {
 		"created_at": "invalid-time-format",
 	}
 
-	// Should not panic, just return empty time
 	ep := action.DocToEpisode(doc)
-	assert.NotNil(t, ep)
+
+	assert.NotNil(t, ep, "should not panic on invalid time format")
+	assert.True(t, ep.CreatedAt.IsZero(), "invalid format should result in zero time")
 }
 
 func TestBaseAction_timeHook_MultipleFormats(t *testing.T) {
@@ -506,27 +507,22 @@ func TestBaseAction_stringSliceHook_MixedTypes(t *testing.T) {
 	assert.Equal(t, "ep_2", edge.EpisodeIDs[1])
 }
 
-func TestDocToEpisode_InvalidData_ReturnsEmptyStructInsteadOfError(t *testing.T) {
+func TestBaseAction_DocToEpisode_InvalidData(t *testing.T) {
 	action := NewBaseAction("test")
 
-	// 传入无效数据
 	doc := map[string]any{
-		"id":                123,                    // 应该是 string
+		"id":                123,                   // should be string
 		"created_at":        "invalid-date-format",
-		"content_embedding": "not-a-slice", // 应该是 []float32
+		"content_embedding": "not-a-slice",        // should be []float32
 	}
 
 	ep := action.DocToEpisode(doc)
 
-	// BUG: 解析失败返回空 struct，调用方无法区分：
-	// 1. 数据确实为空
-	// 2. 解析失败
-	assert.NotNil(t, ep, "Returns empty struct instead of nil")
-	assert.Empty(t, ep.ID, "ID parsing failed silently")
-	assert.Nil(t, ep.Embedding, "Embedding parsing failed silently")
-
-	t.Log("BUG: DocToEpisode returns empty struct on parse failure")
-	t.Log("Caller cannot distinguish between empty data and parse error")
+	// Note: DocToEpisode returns empty struct on parse failure
+	// Caller cannot distinguish between empty data and parse error
+	assert.NotNil(t, ep, "should return empty struct, not nil")
+	assert.Empty(t, ep.ID, "invalid type should result in empty ID")
+	assert.Nil(t, ep.Embedding, "invalid type should result in nil embedding")
 }
 
 // ============================================================================
