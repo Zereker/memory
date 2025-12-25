@@ -8,7 +8,42 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Zereker/memory/internal/domain"
+	pkggenkit "github.com/Zereker/memory/pkg/genkit"
 )
+
+// ============================================================================
+// Test Helper
+// ============================================================================
+
+// testHelper provides utilities for testing actions with MockPlugin
+type testHelper struct {
+	MockPlugin *pkggenkit.MockPlugin
+}
+
+// newTestHelper creates a new test helper with MockPlugin initialized
+func newTestHelper(ctx context.Context) *testHelper {
+	mockPlugin := pkggenkit.InitForTest(ctx, pkggenkit.MockConfig{
+		Provider: "ark",
+		Models: []pkggenkit.ModelConfig{
+			{Name: "doubao-pro-32k", Type: pkggenkit.ModelTypeLLM, Model: "doubao-pro-32k"},
+			{Name: "doubao-embedding-text-240715", Type: pkggenkit.ModelTypeEmbedding, Model: "doubao-embedding", Dim: 4096},
+		},
+	}, "prompts")
+
+	return &testHelper{MockPlugin: mockPlugin}
+}
+
+func (h *testHelper) setEmbedderVector(vector []float32) {
+	h.MockPlugin.SetEmbedderVectorResponse("doubao-embedding-text-240715", vector)
+}
+
+func (h *testHelper) setModelJSON(response any) {
+	h.MockPlugin.SetModelJSONResponse("doubao-pro-32k", response)
+}
+
+// ============================================================================
+// BaseAction Tests
+// ============================================================================
 
 func TestNewBaseAction(t *testing.T) {
 	action := NewBaseAction("test")
@@ -20,8 +55,8 @@ func TestNewBaseAction(t *testing.T) {
 
 func TestBaseAction_GenEmbedding_WithMockPlugin(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
 
 	action := NewBaseAction("test")
 	embedding, err := action.GenEmbedding(ctx, "ark/doubao-embedding-text-240715", "hello")
@@ -32,8 +67,8 @@ func TestBaseAction_GenEmbedding_WithMockPlugin(t *testing.T) {
 
 func TestBaseAction_Generate_WithMockPlugin(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetModelJSON(map[string]any{
+	h := newTestHelper(ctx)
+	h.setModelJSON(map[string]any{
 		"topic": "测试主题",
 	})
 
@@ -372,4 +407,27 @@ func TestBaseAction_stringSliceHook_MixedTypes(t *testing.T) {
 	assert.Len(t, edge.EpisodeIDs, 2)
 	assert.Equal(t, "ep_1", edge.EpisodeIDs[0])
 	assert.Equal(t, "ep_2", edge.EpisodeIDs[1])
+}
+
+func TestDocToEpisode_InvalidData_ReturnsEmptyStructInsteadOfError(t *testing.T) {
+	action := NewBaseAction("test")
+
+	// 传入无效数据
+	doc := map[string]any{
+		"id":                123,                    // 应该是 string
+		"created_at":        "invalid-date-format",
+		"content_embedding": "not-a-slice", // 应该是 []float32
+	}
+
+	ep := action.DocToEpisode(doc)
+
+	// BUG: 解析失败返回空 struct，调用方无法区分：
+	// 1. 数据确实为空
+	// 2. 解析失败
+	assert.NotNil(t, ep, "Returns empty struct instead of nil")
+	assert.Empty(t, ep.ID, "ID parsing failed silently")
+	assert.Nil(t, ep.Embedding, "Embedding parsing failed silently")
+
+	t.Log("BUG: DocToEpisode returns empty struct on parse failure")
+	t.Log("Caller cannot distinguish between empty data and parse error")
 }

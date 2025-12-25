@@ -11,7 +11,7 @@ import (
 
 func TestExtractionAction_Name(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx) // Initialize genkit
+	_ = newTestHelper(ctx) // Initialize genkit
 
 	action := NewExtractionAction()
 	assert.Equal(t, "extraction", action.Name())
@@ -19,7 +19,7 @@ func TestExtractionAction_Name(t *testing.T) {
 
 func TestExtractionAction_WithStores(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
@@ -34,12 +34,12 @@ func TestExtractionAction_WithStores(t *testing.T) {
 
 func TestExtractionAction_Handle_EmptyMessages(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
 
-	action := helper.NewExtractionAction()
+	action := NewExtractionAction()
 	action.WithStores(mockVector, mockGraph)
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
@@ -54,9 +54,9 @@ func TestExtractionAction_Handle_EmptyMessages(t *testing.T) {
 
 func TestExtractionAction_Handle_WithMessages(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
-	helper.SetModelJSON(map[string]any{
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h.setModelJSON(map[string]any{
 		"entities": []map[string]any{
 			{"name": "张三", "type": "person", "description": "用户的朋友"},
 			{"name": "星巴克", "type": "place", "description": "咖啡店"},
@@ -69,7 +69,7 @@ func TestExtractionAction_Handle_WithMessages(t *testing.T) {
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
 
-	action := helper.NewExtractionAction()
+	action := NewExtractionAction()
 	action.WithStores(mockVector, mockGraph)
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
@@ -88,16 +88,16 @@ func TestExtractionAction_Handle_WithMessages(t *testing.T) {
 
 func TestExtractionAction_Handle_NoStores(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
-	helper.SetModelJSON(map[string]any{
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h.setModelJSON(map[string]any{
 		"entities": []map[string]any{
 			{"name": "张三", "type": "person"},
 		},
 		"relations": []map[string]any{},
 	})
 
-	action := helper.NewExtractionAction()
+	action := NewExtractionAction()
 	action.WithStores(nil, nil) // 无存储
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
@@ -115,9 +115,9 @@ func TestExtractionAction_Handle_NoStores(t *testing.T) {
 
 func TestExtractionAction_Handle_StoreEntityError(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
-	helper.SetModelJSON(map[string]any{
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h.setModelJSON(map[string]any{
 		"entities": []map[string]any{
 			{"name": "张三", "type": "person"},
 		},
@@ -130,7 +130,7 @@ func TestExtractionAction_Handle_StoreEntityError(t *testing.T) {
 		return assert.AnError
 	}
 
-	action := helper.NewExtractionAction()
+	action := NewExtractionAction()
 	action.WithStores(mockVector, mockGraph)
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")

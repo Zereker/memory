@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,7 @@ import (
 
 func TestSummaryAction_Name(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	action := NewSummaryAction()
 	assert.Equal(t, "summary", action.Name())
@@ -20,7 +21,7 @@ func TestSummaryAction_Name(t *testing.T) {
 
 func TestSummaryAction_WithStore(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	mockStore := NewMockVectorStore()
 	action := NewSummaryAction()
@@ -31,9 +32,9 @@ func TestSummaryAction_WithStore(t *testing.T) {
 
 func TestSummaryAction_Handle_NoUserEpisodes(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
-	action := helper.NewSummaryAction()
+	action := NewSummaryAction()
 	action.WithStore(nil)
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
@@ -49,9 +50,9 @@ func TestSummaryAction_Handle_NoUserEpisodes(t *testing.T) {
 
 func TestSummaryAction_Handle_WithTopicChange(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
-	helper.SetModelJSON(map[string]any{
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h.setModelJSON(map[string]any{
 		"content": "用户张三住在北京",
 	})
 
@@ -79,7 +80,7 @@ func TestSummaryAction_Handle_WithTopicChange(t *testing.T) {
 		}, nil
 	}
 
-	action := helper.NewSummaryAction()
+	action := NewSummaryAction()
 	action.WithStore(mockStore)
 
 	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
@@ -97,4 +98,31 @@ func TestSummaryAction_Handle_WithTopicChange(t *testing.T) {
 
 	assert.NoError(t, addCtx.Error())
 	assert.Len(t, addCtx.Summaries, 1)
+}
+
+func TestSummaryAction_LoadEpisodes_DatabaseErrorPropagated(t *testing.T) {
+	ctx := context.Background()
+	_ = newTestHelper(ctx)
+
+	dbError := errors.New("database connection failed")
+
+	mockStore := NewMockVectorStore()
+	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
+		// 查询 Summary 时返回错误
+		return nil, dbError
+	}
+
+	action := NewSummaryAction()
+	action.WithStore(mockStore)
+
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+	addCtx.Episodes = []domain.Episode{
+		{ID: "ep_current", Role: domain.RoleUser, Topic: "test"},
+	}
+
+	action.Handle(addCtx)
+
+	// 修复后：数据库错误应该被传播
+	assert.Error(t, addCtx.Error(), "Database error should be propagated")
+	assert.Contains(t, addCtx.Error().Error(), "database connection failed")
 }

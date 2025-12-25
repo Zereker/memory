@@ -12,7 +12,7 @@ import (
 
 func TestRetrievalAction_Name(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	action := NewRetrievalAction()
 	assert.Equal(t, "retrieval", action.Name())
@@ -20,7 +20,7 @@ func TestRetrievalAction_Name(t *testing.T) {
 
 func TestRetrievalAction_WithStores(t *testing.T) {
 	ctx := context.Background()
-	_ = NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
@@ -33,8 +33,8 @@ func TestRetrievalAction_WithStores(t *testing.T) {
 
 func TestRetrievalAction_HandleRecall_WithResults(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
 
 	mockVector := NewMockVectorStore()
 	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
@@ -62,7 +62,7 @@ func TestRetrievalAction_HandleRecall_WithResults(t *testing.T) {
 
 	mockGraph := NewMockGraphStore()
 
-	action := helper.NewRetrievalAction()
+	action := NewRetrievalAction()
 	action.WithStores(mockVector, mockGraph)
 
 	req := &domain.RetrieveRequest{
@@ -82,12 +82,12 @@ func TestRetrievalAction_HandleRecall_WithResults(t *testing.T) {
 
 func TestRetrievalAction_HandleRecall_EmptyQuery(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
+	_ = newTestHelper(ctx)
 
 	mockVector := NewMockVectorStore()
 	mockGraph := NewMockGraphStore()
 
-	action := helper.NewRetrievalAction()
+	action := NewRetrievalAction()
 	action.WithStores(mockVector, mockGraph)
 
 	req := &domain.RetrieveRequest{
@@ -105,8 +105,8 @@ func TestRetrievalAction_HandleRecall_EmptyQuery(t *testing.T) {
 
 func TestRetrievalAction_HandleRecall_WithGraphTraversal(t *testing.T) {
 	ctx := context.Background()
-	helper := NewTestHelper(ctx)
-	helper.SetEmbedderVector([]float32{0.1, 0.2, 0.3})
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
 
 	mockVector := NewMockVectorStore()
 	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
@@ -126,7 +126,7 @@ func TestRetrievalAction_HandleRecall_WithGraphTraversal(t *testing.T) {
 		}, nil
 	}
 
-	action := helper.NewRetrievalAction()
+	action := NewRetrievalAction()
 	action.WithStores(mockVector, mockGraph)
 
 	req := &domain.RetrieveRequest{
@@ -143,4 +143,77 @@ func TestRetrievalAction_HandleRecall_WithGraphTraversal(t *testing.T) {
 
 	assert.GreaterOrEqual(t, len(mockGraph.TraverseCalls), 1)
 	assert.Len(t, recallCtx.Entities, 2)
+}
+
+func TestTruncateByTokens_ZeroBudget_ReturnsEmptySlice(t *testing.T) {
+	items := []domain.Summary{
+		{ID: "s1", Content: "test"},
+	}
+
+	estimator := func(s domain.Summary) int {
+		return 10
+	}
+
+	// 修复后：maxTokens=0 时返回空切片
+	result := truncateByTokens(items, 0, estimator)
+
+	assert.NotNil(t, result, "Should return empty slice, not nil")
+	assert.Len(t, result, 0, "Should be empty")
+}
+
+func TestTruncateByTokens_NegativeBudget_ReturnsEmptySlice(t *testing.T) {
+	items := []domain.Summary{
+		{ID: "s1", Content: "test"},
+	}
+
+	estimator := func(s domain.Summary) int {
+		return 10
+	}
+
+	// 修复后：maxTokens=-1 时返回空切片
+	result := truncateByTokens(items, -1, estimator)
+
+	assert.NotNil(t, result, "Should return empty slice, not nil")
+	assert.Len(t, result, 0, "Should be empty")
+}
+
+func TestRetrievalAction_ScoreTypeAssertion_WrongTypeBecomesZero(t *testing.T) {
+	ctx := context.Background()
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+
+	mockVector := NewMockVectorStore()
+	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
+		docType, _ := query.Filters["type"].(string)
+		if docType == domain.DocTypeEpisode {
+			return []map[string]any{
+				{
+					"id":      "ep_1",
+					"type":    domain.DocTypeEpisode,
+					"role":    domain.RoleUser,
+					"content": "test",
+					"_score":  "0.95", // 故意用错误类型
+				},
+			}, nil
+		}
+		return nil, nil
+	}
+
+	action := NewRetrievalAction()
+	action.WithStores(mockVector, NewMockGraphStore())
+
+	req := &domain.RetrieveRequest{
+		AgentID: "agent",
+		UserID:  "user",
+		Query:   "test",
+	}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	action.HandleRecall(recallCtx)
+
+	// 代码已有 ok 检查，类型错误时 score 保持默认值 0
+	// 这是预期行为，不是 bug
+	if len(recallCtx.Episodes) > 0 {
+		assert.Equal(t, float64(0), recallCtx.Episodes[0].Score, "Wrong type defaults to 0")
+	}
 }
