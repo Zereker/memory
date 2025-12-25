@@ -217,3 +217,103 @@ func TestRetrievalAction_ScoreTypeAssertion_WrongTypeBecomesZero(t *testing.T) {
 		assert.Equal(t, float64(0), recallCtx.Episodes[0].Score, "Wrong type defaults to 0")
 	}
 }
+
+// ============================================================================
+// FormatMemoryContext Tests
+// ============================================================================
+
+func TestFormatMemoryContext_Empty(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Equal(t, "没有找到相关的记忆信息。", result)
+}
+
+func TestFormatMemoryContext_OnlySummaries(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	recallCtx.Summaries = []domain.Summary{
+		{ID: "s1", Topic: "工作", Content: "用户是产品经理"},
+		{ID: "s2", Topic: "", Content: "无主题摘要"},
+	}
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Contains(t, result, "## 对话摘要")
+	assert.Contains(t, result, "[工作] 用户是产品经理")
+	assert.Contains(t, result, "- 无主题摘要")
+}
+
+func TestFormatMemoryContext_OnlyEdges(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	recallCtx.Edges = []domain.Edge{
+		{ID: "e1", Fact: "张三住在北京"},
+		{ID: "e2", Fact: "张三喜欢编程"},
+	}
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Contains(t, result, "## 用户信息")
+	assert.Contains(t, result, "- 张三住在北京")
+	assert.Contains(t, result, "- 张三喜欢编程")
+}
+
+func TestFormatMemoryContext_OnlyEpisodes(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	recallCtx.Episodes = []domain.Episode{
+		{ID: "ep1", Name: "张三", Content: "我在北京"},
+		{ID: "ep2", Name: "", Role: "user", Content: "没有名字的消息"},
+	}
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Contains(t, result, "## 相关对话记录")
+	assert.Contains(t, result, "[张三] 我在北京")
+	assert.Contains(t, result, "[user] 没有名字的消息")
+}
+
+func TestFormatMemoryContext_OnlyEntities(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	recallCtx.Entities = []domain.Entity{
+		{ID: "ent1", Name: "张三", Type: "person", Description: "一个程序员"},
+		{ID: "ent2", Name: "北京", Type: "place", Description: ""},
+	}
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Contains(t, result, "## 提及的实体")
+	assert.Contains(t, result, "- 张三: 一个程序员")
+	assert.Contains(t, result, "- 北京 (place)")
+}
+
+func TestFormatMemoryContext_AllTypes(t *testing.T) {
+	ctx := context.Background()
+	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
+	recallCtx := domain.NewRecallContext(ctx, req)
+
+	recallCtx.Summaries = []domain.Summary{{ID: "s1", Topic: "工作", Content: "摘要内容"}}
+	recallCtx.Edges = []domain.Edge{{ID: "e1", Fact: "事实"}}
+	recallCtx.Episodes = []domain.Episode{{ID: "ep1", Name: "张三", Content: "对话"}}
+	recallCtx.Entities = []domain.Entity{{ID: "ent1", Name: "实体", Type: "type", Description: "描述"}}
+
+	result := FormatMemoryContext(recallCtx)
+
+	assert.Contains(t, result, "## 对话摘要")
+	assert.Contains(t, result, "## 用户信息")
+	assert.Contains(t, result, "## 相关对话记录")
+	assert.Contains(t, result, "## 提及的实体")
+}
