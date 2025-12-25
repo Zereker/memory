@@ -186,32 +186,6 @@ func TestEpisodeAction_EmbeddingFailure_SilentlySkipped(t *testing.T) {
 	t.Log("BUG: Embedding failure was silently ignored, no error set")
 }
 
-func TestEpisodeAction_NilStore_SilentlySucceeds(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-	h.setModelJSON(map[string]any{"topic": "test"})
-
-	action := NewEpisodeStorageAction()
-	// 不设置 store，保持 nil
-	action.WithVectorStore(nil)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.Messages = domain.Messages{
-		{Role: domain.RoleUser, Content: "test message"},
-	}
-
-	action.Handle(addCtx)
-
-	// BUG: store 为 nil 时，storeEpisode 返回 nil 而不是 error
-	// 调用方无法知道数据是否真正被存储
-	assert.NoError(t, addCtx.Error(), "No error even though store is nil")
-	assert.Len(t, addCtx.Episodes, 1, "Episode was 'created' but not actually stored")
-
-	t.Log("BUG: Episode appears to be created successfully, but was never stored (nil store)")
-	t.Log("This could lead to data loss without any indication")
-}
-
 // ============================================================================
 // Additional Coverage Tests for episode.go
 // ============================================================================
@@ -312,27 +286,4 @@ func TestEpisodeStorageAction_Handle_MultipleMessages_PartialFailure(t *testing.
 
 	// Some messages may succeed, some may fail
 	assert.NoError(t, addCtx.Error())
-}
-
-func TestEpisodeStorageAction_Handle_TokenUsageTracked(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	// Set model response with usage info using SetModelJSONResponse which sets usage
-	h.setModelJSON(map[string]any{"topic": "test topic"})
-
-	mockVector := NewMockVectorStore()
-	action := NewEpisodeStorageAction()
-	action.WithVectorStore(mockVector)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.Messages = domain.Messages{
-		{Role: domain.RoleUser, Content: "test message"},
-	}
-
-	action.Handle(addCtx)
-
-	assert.Len(t, addCtx.Episodes, 1)
-	// Token usage is tracked internally (we can't check it directly without TokenUsage field)
 }

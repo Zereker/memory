@@ -657,183 +657,93 @@ func TestSummaryAction_Handle_LoadLastUserEpisodeError(t *testing.T) {
 	assert.Contains(t, addCtx.Error().Error(), "load last user episode failed")
 }
 
-func TestSummaryAction_Handle_TopicEmbeddingTypeFloat32(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-	h.setModelJSON(map[string]any{
-		"content": "生成的摘要内容",
-	})
+func TestSummaryAction_Handle_TopicEmbeddingTypes(t *testing.T) {
+	tests := []struct {
+		name            string
+		topicEmbedding  any
+		expectSummaries int
+		setupModel      bool
+	}{
+		{
+			name:            "float32 slice generates summary",
+			topicEmbedding:  []float32{0.0, 1.0, 0.0},
+			expectSummaries: 1,
+			setupModel:      true,
+		},
+		{
+			name:            "any slice generates summary",
+			topicEmbedding:  []any{0.0, 1.0, 0.0},
+			expectSummaries: 1,
+			setupModel:      true,
+		},
+		{
+			name:            "unknown type skips summary",
+			topicEmbedding:  "not a slice",
+			expectSummaries: 0,
+			setupModel:      false,
+		},
+		{
+			name:            "nil skips summary",
+			topicEmbedding:  nil,
+			expectSummaries: 0,
+			setupModel:      false,
+		},
+	}
 
-	mockStore := NewMockVectorStore()
-	searchCount := 0
-	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		searchCount++
-		docType, _ := query.Filters["type"].(string)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newTestHelper(ctx)
+			if tt.setupModel {
+				h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+				h.setModelJSON(map[string]any{"content": "生成的摘要内容"})
+			}
 
-		if docType == domain.DocTypeEpisode && searchCount == 1 {
-			return []map[string]any{
+			mockStore := NewMockVectorStore()
+			searchCount := 0
+			mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
+				searchCount++
+				docType, _ := query.Filters["type"].(string)
+
+				if docType == domain.DocTypeEpisode && searchCount == 1 {
+					doc := map[string]any{
+						"id":    "ep_old",
+						"role":  domain.RoleUser,
+						"topic": "旧主题",
+					}
+					if tt.topicEmbedding != nil {
+						doc["topic_embedding"] = tt.topicEmbedding
+					}
+					return []map[string]any{doc}, nil
+				}
+				if docType == domain.DocTypeSummary {
+					return nil, nil
+				}
+				return []map[string]any{
+					{"id": "ep_old", "role": domain.RoleUser, "content": "旧消息"},
+				}, nil
+			}
+
+			action := NewSummaryAction()
+			action.WithStore(mockStore)
+
+			addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+			addCtx.TopicThreshold = 0.8
+			addCtx.Episodes = []domain.Episode{
 				{
-					"id":              "ep_old",
-					"role":            domain.RoleUser,
-					"topic":           "旧主题",
-					"topic_embedding": []float32{0.0, 1.0, 0.0}, // []float32 type
+					ID:             "ep_current",
+					Role:           domain.RoleUser,
+					Topic:          "新主题",
+					TopicEmbedding: []float32{1.0, 0.0, 0.0},
 				},
-			}, nil
-		}
-		if docType == domain.DocTypeSummary {
-			return nil, nil
-		}
-		// loadEpisodesSinceLastSummary
-		return []map[string]any{
-			{"id": "ep_old", "role": domain.RoleUser, "content": "旧消息"},
-		}, nil
+			}
+
+			action.Handle(addCtx)
+
+			assert.NoError(t, addCtx.Error())
+			assert.Len(t, addCtx.Summaries, tt.expectSummaries)
+		})
 	}
-
-	action := NewSummaryAction()
-	action.WithStore(mockStore)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.TopicThreshold = 0.8
-	addCtx.Episodes = []domain.Episode{
-		{
-			ID:             "ep_current",
-			Role:           domain.RoleUser,
-			Topic:          "新主题",
-			TopicEmbedding: []float32{1.0, 0.0, 0.0},
-		},
-	}
-
-	action.Handle(addCtx)
-
-	assert.NoError(t, addCtx.Error())
-	assert.Len(t, addCtx.Summaries, 1)
-}
-
-func TestSummaryAction_Handle_TopicEmbeddingTypeAny(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-	h.setModelJSON(map[string]any{
-		"content": "生成的摘要内容",
-	})
-
-	mockStore := NewMockVectorStore()
-	searchCount := 0
-	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		searchCount++
-		docType, _ := query.Filters["type"].(string)
-
-		if docType == domain.DocTypeEpisode && searchCount == 1 {
-			return []map[string]any{
-				{
-					"id":              "ep_old",
-					"role":            domain.RoleUser,
-					"topic":           "旧主题",
-					"topic_embedding": []any{0.0, 1.0, 0.0}, // []any type
-				},
-			}, nil
-		}
-		if docType == domain.DocTypeSummary {
-			return nil, nil
-		}
-		return []map[string]any{
-			{"id": "ep_old", "role": domain.RoleUser, "content": "旧消息"},
-		}, nil
-	}
-
-	action := NewSummaryAction()
-	action.WithStore(mockStore)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.TopicThreshold = 0.8
-	addCtx.Episodes = []domain.Episode{
-		{
-			ID:             "ep_current",
-			Role:           domain.RoleUser,
-			Topic:          "新主题",
-			TopicEmbedding: []float32{1.0, 0.0, 0.0},
-		},
-	}
-
-	action.Handle(addCtx)
-
-	assert.NoError(t, addCtx.Error())
-	assert.Len(t, addCtx.Summaries, 1)
-}
-
-func TestSummaryAction_Handle_TopicEmbeddingUnknownType(t *testing.T) {
-	ctx := context.Background()
-	_ = newTestHelper(ctx)
-
-	mockStore := NewMockVectorStore()
-	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		return []map[string]any{
-			{
-				"id":              "ep_old",
-				"role":            domain.RoleUser,
-				"topic":           "旧主题",
-				"topic_embedding": "not a slice", // Unknown type
-			},
-		}, nil
-	}
-
-	action := NewSummaryAction()
-	action.WithStore(mockStore)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.TopicThreshold = 0.8
-	addCtx.Episodes = []domain.Episode{
-		{
-			ID:             "ep_current",
-			Role:           domain.RoleUser,
-			Topic:          "新主题",
-			TopicEmbedding: []float32{1.0, 0.0, 0.0},
-		},
-	}
-
-	action.Handle(addCtx)
-
-	// Should skip due to missing topic embedding
-	assert.NoError(t, addCtx.Error())
-	assert.Empty(t, addCtx.Summaries)
-}
-
-func TestSummaryAction_Handle_NoTopicEmbeddingInDoc(t *testing.T) {
-	ctx := context.Background()
-	_ = newTestHelper(ctx)
-
-	mockStore := NewMockVectorStore()
-	mockStore.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		return []map[string]any{
-			{
-				"id":    "ep_old",
-				"role":  domain.RoleUser,
-				"topic": "旧主题",
-				// No topic_embedding field
-			},
-		}, nil
-	}
-
-	action := NewSummaryAction()
-	action.WithStore(mockStore)
-
-	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-	addCtx.TopicThreshold = 0.8
-	addCtx.Episodes = []domain.Episode{
-		{
-			ID:             "ep_current",
-			Role:           domain.RoleUser,
-			Topic:          "新主题",
-			TopicEmbedding: []float32{1.0, 0.0, 0.0},
-		},
-	}
-
-	action.Handle(addCtx)
-
-	// Should skip due to missing topic embedding
-	assert.NoError(t, addCtx.Error())
-	assert.Empty(t, addCtx.Summaries)
 }
 
 func TestSummaryAction_formatEpisodes(t *testing.T) {

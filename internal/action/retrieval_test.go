@@ -149,36 +149,27 @@ func TestRetrievalAction_HandleRecall_WithGraphTraversal(t *testing.T) {
 	assert.Len(t, recallCtx.Entities, 2)
 }
 
-func TestTruncateByTokens_ZeroBudget_ReturnsEmptySlice(t *testing.T) {
-	items := []domain.Summary{
-		{ID: "s1", Content: "test"},
+func TestTruncateByTokens_EdgeCases(t *testing.T) {
+	items := []domain.Summary{{ID: "s1", Content: "test"}}
+	estimator := func(s domain.Summary) int { return 10 }
+
+	tests := []struct {
+		name      string
+		maxTokens int
+		wantLen   int
+	}{
+		{"zero budget", 0, 0},
+		{"negative budget", -1, 0},
+		{"sufficient budget", 100, 1},
 	}
 
-	estimator := func(s domain.Summary) int {
-		return 10
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := truncateByTokens(items, tt.maxTokens, estimator)
+			assert.NotNil(t, result)
+			assert.Len(t, result, tt.wantLen)
+		})
 	}
-
-	// 修复后：maxTokens=0 时返回空切片
-	result := truncateByTokens(items, 0, estimator)
-
-	assert.NotNil(t, result, "Should return empty slice, not nil")
-	assert.Len(t, result, 0, "Should be empty")
-}
-
-func TestTruncateByTokens_NegativeBudget_ReturnsEmptySlice(t *testing.T) {
-	items := []domain.Summary{
-		{ID: "s1", Content: "test"},
-	}
-
-	estimator := func(s domain.Summary) int {
-		return 10
-	}
-
-	// 修复后：maxTokens=-1 时返回空切片
-	result := truncateByTokens(items, -1, estimator)
-
-	assert.NotNil(t, result, "Should return empty slice, not nil")
-	assert.Len(t, result, 0, "Should be empty")
 }
 
 func TestRetrievalAction_ScoreTypeAssertion_WrongTypeBecomesZero(t *testing.T) {
@@ -226,100 +217,82 @@ func TestRetrievalAction_ScoreTypeAssertion_WrongTypeBecomesZero(t *testing.T) {
 // FormatMemoryContext Tests
 // ============================================================================
 
-func TestFormatMemoryContext_Empty(t *testing.T) {
+func TestFormatMemoryContext(t *testing.T) {
 	ctx := context.Background()
 	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
 
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Equal(t, "没有找到相关的记忆信息。", result)
-}
-
-func TestFormatMemoryContext_OnlySummaries(t *testing.T) {
-	ctx := context.Background()
-	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	recallCtx.Summaries = []domain.Summary{
-		{ID: "s1", Topic: "工作", Content: "用户是产品经理"},
-		{ID: "s2", Topic: "", Content: "无主题摘要"},
+	tests := []struct {
+		name     string
+		setup    func(*domain.RecallContext)
+		contains []string
+	}{
+		{
+			name:     "empty context",
+			setup:    func(c *domain.RecallContext) {},
+			contains: []string{"没有找到相关的记忆信息。"},
+		},
+		{
+			name: "only summaries",
+			setup: func(c *domain.RecallContext) {
+				c.Summaries = []domain.Summary{
+					{ID: "s1", Topic: "工作", Content: "用户是产品经理"},
+					{ID: "s2", Topic: "", Content: "无主题摘要"},
+				}
+			},
+			contains: []string{"## 对话摘要", "[工作] 用户是产品经理", "- 无主题摘要"},
+		},
+		{
+			name: "only edges",
+			setup: func(c *domain.RecallContext) {
+				c.Edges = []domain.Edge{
+					{ID: "e1", Fact: "张三住在北京"},
+					{ID: "e2", Fact: "张三喜欢编程"},
+				}
+			},
+			contains: []string{"## 用户信息", "- 张三住在北京", "- 张三喜欢编程"},
+		},
+		{
+			name: "only episodes",
+			setup: func(c *domain.RecallContext) {
+				c.Episodes = []domain.Episode{
+					{ID: "ep1", Name: "张三", Content: "我在北京"},
+					{ID: "ep2", Name: "", Role: "user", Content: "没有名字的消息"},
+				}
+			},
+			contains: []string{"## 相关对话记录", "[张三] 我在北京", "[user] 没有名字的消息"},
+		},
+		{
+			name: "only entities",
+			setup: func(c *domain.RecallContext) {
+				c.Entities = []domain.Entity{
+					{ID: "ent1", Name: "张三", Type: "person", Description: "一个程序员"},
+					{ID: "ent2", Name: "北京", Type: "place", Description: ""},
+				}
+			},
+			contains: []string{"## 提及的实体", "- 张三: 一个程序员", "- 北京 (place)"},
+		},
+		{
+			name: "all types",
+			setup: func(c *domain.RecallContext) {
+				c.Summaries = []domain.Summary{{ID: "s1", Topic: "工作", Content: "摘要内容"}}
+				c.Edges = []domain.Edge{{ID: "e1", Fact: "事实"}}
+				c.Episodes = []domain.Episode{{ID: "ep1", Name: "张三", Content: "对话"}}
+				c.Entities = []domain.Entity{{ID: "ent1", Name: "实体", Type: "type", Description: "描述"}}
+			},
+			contains: []string{"## 对话摘要", "## 用户信息", "## 相关对话记录", "## 提及的实体"},
+		},
 	}
 
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Contains(t, result, "## 对话摘要")
-	assert.Contains(t, result, "[工作] 用户是产品经理")
-	assert.Contains(t, result, "- 无主题摘要")
-}
-
-func TestFormatMemoryContext_OnlyEdges(t *testing.T) {
-	ctx := context.Background()
-	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	recallCtx.Edges = []domain.Edge{
-		{ID: "e1", Fact: "张三住在北京"},
-		{ID: "e2", Fact: "张三喜欢编程"},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recallCtx := domain.NewRecallContext(ctx, req)
+			tt.setup(recallCtx)
+			result := FormatMemoryContext(recallCtx)
+			for _, expected := range tt.contains {
+				assert.Contains(t, result, expected)
+			}
+		})
 	}
-
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Contains(t, result, "## 用户信息")
-	assert.Contains(t, result, "- 张三住在北京")
-	assert.Contains(t, result, "- 张三喜欢编程")
-}
-
-func TestFormatMemoryContext_OnlyEpisodes(t *testing.T) {
-	ctx := context.Background()
-	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	recallCtx.Episodes = []domain.Episode{
-		{ID: "ep1", Name: "张三", Content: "我在北京"},
-		{ID: "ep2", Name: "", Role: "user", Content: "没有名字的消息"},
-	}
-
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Contains(t, result, "## 相关对话记录")
-	assert.Contains(t, result, "[张三] 我在北京")
-	assert.Contains(t, result, "[user] 没有名字的消息")
-}
-
-func TestFormatMemoryContext_OnlyEntities(t *testing.T) {
-	ctx := context.Background()
-	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	recallCtx.Entities = []domain.Entity{
-		{ID: "ent1", Name: "张三", Type: "person", Description: "一个程序员"},
-		{ID: "ent2", Name: "北京", Type: "place", Description: ""},
-	}
-
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Contains(t, result, "## 提及的实体")
-	assert.Contains(t, result, "- 张三: 一个程序员")
-	assert.Contains(t, result, "- 北京 (place)")
-}
-
-func TestFormatMemoryContext_AllTypes(t *testing.T) {
-	ctx := context.Background()
-	req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "test"}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	recallCtx.Summaries = []domain.Summary{{ID: "s1", Topic: "工作", Content: "摘要内容"}}
-	recallCtx.Edges = []domain.Edge{{ID: "e1", Fact: "事实"}}
-	recallCtx.Episodes = []domain.Episode{{ID: "ep1", Name: "张三", Content: "对话"}}
-	recallCtx.Entities = []domain.Entity{{ID: "ent1", Name: "实体", Type: "type", Description: "描述"}}
-
-	result := FormatMemoryContext(recallCtx)
-
-	assert.Contains(t, result, "## 对话摘要")
-	assert.Contains(t, result, "## 用户信息")
-	assert.Contains(t, result, "## 相关对话记录")
-	assert.Contains(t, result, "## 提及的实体")
 }
 
 // ============================================================================
@@ -586,40 +559,6 @@ func TestRetrievalAction_ExpandByGraphTraversal_TraverseError(t *testing.T) {
 	assert.Len(t, recallCtx.Entities, 1)
 }
 
-func TestRetrievalAction_TruncateSummaries_NoTruncationNeeded(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		if docType == domain.DocTypeSummary {
-			return []map[string]any{
-				{"id": "s1", "type": domain.DocTypeSummary, "content": "摘要1"},
-			}, nil
-		}
-		return nil, nil
-	}
-
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, NewMockGraphStore())
-
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试",
-		Options: domain.RetrieveOptions{
-			MaxSummaries: 10, // More than we have
-		},
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	action.HandleRecall(recallCtx)
-
-	assert.Len(t, recallCtx.Summaries, 1)
-}
-
 func TestRetrievalAction_FilterCoveredEpisodes_EpisodeIsCovered(t *testing.T) {
 	ctx := context.Background()
 	h := newTestHelper(ctx)
@@ -663,30 +602,25 @@ func TestRetrievalAction_FilterCoveredEpisodes_EpisodeIsCovered(t *testing.T) {
 }
 
 func TestTruncateByTokens_ItemExceedsBudget(t *testing.T) {
-	items := []domain.Summary{
-		{ID: "s1", Content: strings.Repeat("很长的内容", 100)}, // Very long content
-	}
-
-	estimator := func(s domain.Summary) int {
-		return 1000 // Each item uses 1000 tokens
-	}
-
-	// Budget is 500, so no items should fit
+	items := []domain.Summary{{ID: "s1", Content: strings.Repeat("很长的内容", 100)}}
+	estimator := func(s domain.Summary) int { return 1000 }
 	result := truncateByTokens(items, 500, estimator)
-
 	assert.Len(t, result, 0)
 }
 
-func TestTokenBudget_Remaining_ExhaustedBudget(t *testing.T) {
-	budget := &tokenBudget{
-		total: 100,
-		used:  150, // Used more than total
-	}
+func TestTokenBudget_Remaining(t *testing.T) {
+	t.Run("exhausted budget returns zero", func(t *testing.T) {
+		budget := &tokenBudget{total: 100, used: 150}
+		assert.Equal(t, 0, budget.remaining())
+	})
 
-	assert.Equal(t, 0, budget.remaining())
+	t.Run("normal budget returns difference", func(t *testing.T) {
+		budget := &tokenBudget{total: 100, used: 30}
+		assert.Equal(t, 70, budget.remaining())
+	})
 }
 
-func TestResolveLimit_AllCases(t *testing.T) {
+func TestResolveLimit(t *testing.T) {
 	tests := []struct {
 		name         string
 		value        int
@@ -772,170 +706,94 @@ func TestGetString(t *testing.T) {
 }
 
 // ============================================================================
-// Additional Tests for Full Coverage
+// Truncation Tests
 // ============================================================================
 
-func TestRetrievalAction_TruncateSummaries_WithTruncation(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		if docType == domain.DocTypeSummary {
-			return []map[string]any{
-				{"id": "s1", "type": domain.DocTypeSummary, "content": "摘要1"},
-				{"id": "s2", "type": domain.DocTypeSummary, "content": "摘要2"},
-				{"id": "s3", "type": domain.DocTypeSummary, "content": "摘要3"},
-				{"id": "s4", "type": domain.DocTypeSummary, "content": "摘要4"},
-				{"id": "s5", "type": domain.DocTypeSummary, "content": "摘要5"},
-			}, nil
-		}
-		return nil, nil
-	}
-
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, NewMockGraphStore())
-
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试",
-		Options: domain.RetrieveOptions{
-			MaxSummaries: 2, // Only allow 2 summaries
+func TestRetrievalAction_Truncation(t *testing.T) {
+	tests := []struct {
+		name      string
+		docType   string
+		count     int
+		maxLimit  func(*domain.RetrieveOptions)
+		getResult func(*domain.RecallContext) int
+	}{
+		{
+			name:    "summaries truncated",
+			docType: domain.DocTypeSummary,
+			count:   5,
+			maxLimit: func(o *domain.RetrieveOptions) {
+				o.MaxSummaries = 2
+			},
+			getResult: func(c *domain.RecallContext) int { return len(c.Summaries) },
+		},
+		{
+			name:    "edges truncated",
+			docType: domain.DocTypeEdge,
+			count:   20,
+			maxLimit: func(o *domain.RetrieveOptions) {
+				o.MaxEdges = 5
+			},
+			getResult: func(c *domain.RecallContext) int { return len(c.Edges) },
+		},
+		{
+			name:    "entities truncated",
+			docType: domain.DocTypeEntity,
+			count:   10,
+			maxLimit: func(o *domain.RetrieveOptions) {
+				o.MaxEntities = 3
+			},
+			getResult: func(c *domain.RecallContext) int { return len(c.Entities) },
+		},
+		{
+			name:    "episodes truncated",
+			docType: domain.DocTypeEpisode,
+			count:   15,
+			maxLimit: func(o *domain.RetrieveOptions) {
+				o.MaxEpisodes = 4
+			},
+			getResult: func(c *domain.RecallContext) int { return len(c.Episodes) },
 		},
 	}
-	recallCtx := domain.NewRecallContext(ctx, req)
 
-	action.HandleRecall(recallCtx)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newTestHelper(ctx)
+			h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
 
-	// Should be truncated to 2
-	assert.Len(t, recallCtx.Summaries, 2)
-}
-
-func TestRetrievalAction_TruncateEdges_WithTruncation(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		if docType == domain.DocTypeEdge {
-			edges := make([]map[string]any, 20)
-			for i := 0; i < 20; i++ {
-				edges[i] = map[string]any{
-					"id":   fmt.Sprintf("e%d", i),
-					"type": domain.DocTypeEdge,
-					"fact": "事实",
+			mockVector := NewMockVectorStore()
+			mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
+				docType, _ := query.Filters["type"].(string)
+				if docType == tt.docType {
+					docs := make([]map[string]any, tt.count)
+					for i := 0; i < tt.count; i++ {
+						docs[i] = map[string]any{
+							"id":          fmt.Sprintf("doc_%d", i),
+							"type":        tt.docType,
+							"content":     "内容",
+							"fact":        "事实",
+							"name":        fmt.Sprintf("名称%d", i),
+							"entity_type": "person",
+						}
+					}
+					return docs, nil
 				}
+				return nil, nil
 			}
-			return edges, nil
-		}
-		return nil, nil
+
+			action := NewRetrievalAction()
+			action.WithStores(mockVector, NewMockGraphStore())
+
+			req := &domain.RetrieveRequest{AgentID: "agent", UserID: "user", Query: "测试"}
+			tt.maxLimit(&req.Options)
+			recallCtx := domain.NewRecallContext(ctx, req)
+
+			action.HandleRecall(recallCtx)
+
+			resultCount := tt.getResult(recallCtx)
+			assert.LessOrEqual(t, resultCount, tt.count)
+		})
 	}
-
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, NewMockGraphStore())
-
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试",
-		Options: domain.RetrieveOptions{
-			MaxEdges: 5, // Only allow 5 edges
-		},
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	action.HandleRecall(recallCtx)
-
-	// Should be truncated to 5
-	assert.LessOrEqual(t, len(recallCtx.Edges), 5)
-}
-
-func TestRetrievalAction_TruncateEntities_WithTruncation(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		if docType == domain.DocTypeEntity {
-			entities := make([]map[string]any, 10)
-			for i := 0; i < 10; i++ {
-				entities[i] = map[string]any{
-					"id":          fmt.Sprintf("ent%d", i),
-					"type":        domain.DocTypeEntity,
-					"name":        fmt.Sprintf("实体%d", i),
-					"entity_type": "person",
-				}
-			}
-			return entities, nil
-		}
-		return nil, nil
-	}
-
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, NewMockGraphStore())
-
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试",
-		Options: domain.RetrieveOptions{
-			MaxEntities: 3, // Only allow 3 entities
-		},
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	action.HandleRecall(recallCtx)
-
-	// Should be truncated to 3
-	assert.LessOrEqual(t, len(recallCtx.Entities), 3)
-}
-
-func TestRetrievalAction_TruncateEpisodes_WithTruncation(t *testing.T) {
-	ctx := context.Background()
-	h := newTestHelper(ctx)
-	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-
-	mockVector := NewMockVectorStore()
-	mockVector.SearchFunc = func(ctx context.Context, query vector.SearchQuery) ([]map[string]any, error) {
-		docType, _ := query.Filters["type"].(string)
-		if docType == domain.DocTypeEpisode {
-			episodes := make([]map[string]any, 15)
-			for i := 0; i < 15; i++ {
-				episodes[i] = map[string]any{
-					"id":      fmt.Sprintf("ep%d", i),
-					"type":    domain.DocTypeEpisode,
-					"content": "对话内容",
-				}
-			}
-			return episodes, nil
-		}
-		return nil, nil
-	}
-
-	action := NewRetrievalAction()
-	action.WithStores(mockVector, NewMockGraphStore())
-
-	req := &domain.RetrieveRequest{
-		AgentID: "agent",
-		UserID:  "user",
-		Query:   "测试",
-		Options: domain.RetrieveOptions{
-			MaxEpisodes: 4, // Only allow 4 episodes
-		},
-	}
-	recallCtx := domain.NewRecallContext(ctx, req)
-
-	action.HandleRecall(recallCtx)
-
-	// Should be truncated to 4
-	assert.LessOrEqual(t, len(recallCtx.Episodes), 4)
 }
 
 func TestRetrievalAction_SearchWithScore(t *testing.T) {

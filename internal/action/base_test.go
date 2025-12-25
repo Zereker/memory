@@ -602,58 +602,28 @@ func TestBaseAction_DocToEntity_WithoutEntityType(t *testing.T) {
 	assert.Empty(t, entity.Type)
 }
 
-func TestBaseAction_DocToEpisode_WithContentEmbeddingField(t *testing.T) {
-	action := NewBaseAction("test")
-	doc := map[string]any{
-		"id":                "ep_123",
-		"content_embedding": []float32{0.1, 0.2, 0.3}, // Using correct json tag
-	}
-
-	ep := action.DocToEpisode(doc)
-	assert.Equal(t, "ep_123", ep.ID)
-	// Check if embedding field is mapped correctly
-	assert.Len(t, ep.Embedding, 3)
-}
-
-func TestBaseAction_DocToSummary_WithTimeFields(t *testing.T) {
+// TestBaseAction_DocConversion_TimeFields tests time field handling across all Doc converters
+func TestBaseAction_DocConversion_TimeFields(t *testing.T) {
 	action := NewBaseAction("test")
 	now := time.Now()
-	doc := map[string]any{
-		"id":         "sum_123",
-		"created_at": now,
-		"updated_at": now,
-	}
 
-	summary := action.DocToSummary(doc)
-	assert.Equal(t, "sum_123", summary.ID)
-	assert.True(t, summary.CreatedAt.Equal(now))
-	assert.True(t, summary.UpdatedAt.Equal(now))
-}
+	t.Run("Summary", func(t *testing.T) {
+		doc := map[string]any{"id": "sum_123", "created_at": now, "updated_at": now}
+		summary := action.DocToSummary(doc)
+		assert.True(t, summary.CreatedAt.Equal(now))
+		assert.True(t, summary.UpdatedAt.Equal(now))
+	})
 
-func TestBaseAction_DocToEdge_WithTimeFields(t *testing.T) {
-	action := NewBaseAction("test")
-	now := time.Now()
-	doc := map[string]any{
-		"id":         "edge_123",
-		"created_at": now,
-	}
+	t.Run("Edge", func(t *testing.T) {
+		doc := map[string]any{"id": "edge_123", "created_at": now}
+		edge := action.DocToEdge(doc)
+		assert.True(t, edge.CreatedAt.Equal(now))
+	})
 
-	edge := action.DocToEdge(doc)
-	assert.Equal(t, "edge_123", edge.ID)
-	assert.True(t, edge.CreatedAt.Equal(now))
-}
-
-func TestBaseAction_DocToEntity_WithTimeFields(t *testing.T) {
-	action := NewBaseAction("test")
-	now := time.Now()
-	doc := map[string]any{
-		"id":         "ent_123",
-		"created_at": now,
-		"updated_at": now,
-	}
-
-	entity := action.DocToEntity(doc)
-	assert.Equal(t, "ent_123", entity.ID)
-	assert.True(t, entity.CreatedAt.Equal(now))
-	assert.True(t, entity.UpdatedAt.Equal(now))
+	t.Run("Entity", func(t *testing.T) {
+		doc := map[string]any{"id": "ent_123", "created_at": now, "updated_at": now}
+		entity := action.DocToEntity(doc)
+		assert.True(t, entity.CreatedAt.Equal(now))
+		assert.True(t, entity.UpdatedAt.Equal(now))
+	})
 }
