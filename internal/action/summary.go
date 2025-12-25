@@ -62,8 +62,7 @@ func (a *SummaryAction) Handle(c *domain.AddContext) {
 	// 加载历史最近的 user Episode
 	lastUserEpisode, err := a.loadLastUserEpisode(c, currentUserEpisode.ID)
 	if err != nil {
-		a.logger.Warn("failed to load last user episode", "error", err)
-		c.Next()
+		c.SetError(err)
 		return
 	}
 
@@ -106,8 +105,7 @@ func (a *SummaryAction) Handle(c *domain.AddContext) {
 	// 加载需要生成摘要的历史 Episodes
 	episodes, err := a.loadEpisodesSinceLastSummary(c, currentUserEpisode.ID)
 	if err != nil {
-		a.logger.Warn("failed to load history episodes", "error", err)
-		c.Next()
+		c.SetError(err)
 		return
 	}
 
@@ -173,7 +171,7 @@ func (a *SummaryAction) loadEpisodesSinceLastSummary(c *domain.AddContext, exclu
 	}
 
 	// 1. 查询该用户最近的 Summary
-	summaries, _ := a.store.Search(c.Context, vector.SearchQuery{
+	summaries, err := a.store.Search(c.Context, vector.SearchQuery{
 		Filters: map[string]any{
 			"type":     domain.DocTypeSummary,
 			"agent_id": c.AgentID,
@@ -181,6 +179,9 @@ func (a *SummaryAction) loadEpisodesSinceLastSummary(c *domain.AddContext, exclu
 		},
 		Limit: 1,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// 2. 构建 Episode 查询
 	episodeQuery := vector.SearchQuery{

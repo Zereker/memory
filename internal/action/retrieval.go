@@ -509,10 +509,10 @@ func (a *RetrievalAction) estimateEpisodeTokens(episodes []domain.Episode) int {
 // truncateByTokens 通用的按 token 预算截断函数
 func truncateByTokens[T any](items []T, maxTokens int, estimator func(T) int) []T {
 	if maxTokens <= 0 {
-		return nil
+		return []T{}
 	}
 
-	var result []T
+	result := make([]T, 0)
 	usedTokens := 0
 
 	for _, item := range items {
