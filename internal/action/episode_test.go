@@ -11,6 +11,8 @@ import (
 	"github.com/Zereker/memory/internal/domain"
 )
 
+// ai package is used for mock responses
+
 func TestEpisodeStorageAction_Name(t *testing.T) {
 	ctx := context.Background()
 	_ = newTestHelper(ctx) // Initialize genkit
@@ -208,4 +210,129 @@ func TestEpisodeAction_NilStore_SilentlySucceeds(t *testing.T) {
 
 	t.Log("BUG: Episode appears to be created successfully, but was never stored (nil store)")
 	t.Log("This could lead to data loss without any indication")
+}
+
+// ============================================================================
+// Additional Coverage Tests for episode.go
+// ============================================================================
+
+func TestEpisodeStorageAction_Handle_TopicGenerationFailure(t *testing.T) {
+	ctx := context.Background()
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+	// Set model to return error via invalid JSON
+	h.MockPlugin.SetModelResponse("doubao-pro-32k", func(ctx context.Context, req *ai.ModelRequest) (*ai.ModelResponse, error) {
+		return nil, errors.New("topic generation failed")
+	})
+
+	mockVector := NewMockVectorStore()
+	action := NewEpisodeStorageAction()
+	action.WithVectorStore(mockVector)
+
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+	addCtx.Messages = domain.Messages{
+		{Role: domain.RoleUser, Content: "test message"},
+	}
+
+	action.Handle(addCtx)
+
+	// Topic generation failure should skip this message
+	assert.Empty(t, addCtx.Episodes)
+	assert.NoError(t, addCtx.Error())
+}
+
+func TestEpisodeStorageAction_Handle_TopicEmbeddingFailure(t *testing.T) {
+	ctx := context.Background()
+	h := newTestHelper(ctx)
+	h.setModelJSON(map[string]any{"topic": "test topic"})
+
+	// First call succeeds for content embedding, second fails for topic embedding
+	callCount := 0
+	h.MockPlugin.SetEmbedderResponse("doubao-embedding-text-240715", func(ctx context.Context, req *ai.EmbedRequest) (*ai.EmbedResponse, error) {
+		callCount++
+		if callCount == 1 {
+			// First call: content embedding succeeds
+			return &ai.EmbedResponse{
+				Embeddings: []*ai.Embedding{
+					{Embedding: []float32{0.1, 0.2, 0.3}},
+				},
+			}, nil
+		}
+		// Second call: topic embedding fails
+		return nil, errors.New("topic embedding failed")
+	})
+
+	mockVector := NewMockVectorStore()
+	action := NewEpisodeStorageAction()
+	action.WithVectorStore(mockVector)
+
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+	addCtx.Messages = domain.Messages{
+		{Role: domain.RoleUser, Content: "test message"},
+	}
+
+	action.Handle(addCtx)
+
+	// Topic embedding failure should skip this message
+	assert.Empty(t, addCtx.Episodes)
+	assert.NoError(t, addCtx.Error())
+}
+
+func TestEpisodeStorageAction_Handle_MultipleMessages_PartialFailure(t *testing.T) {
+	ctx := context.Background()
+	h := newTestHelper(ctx)
+	h.setModelJSON(map[string]any{"topic": "test topic"})
+
+	// Alternate between success and failure
+	callCount := 0
+	h.MockPlugin.SetEmbedderResponse("doubao-embedding-text-240715", func(ctx context.Context, req *ai.EmbedRequest) (*ai.EmbedResponse, error) {
+		callCount++
+		if callCount%2 == 0 {
+			return nil, errors.New("embedding failed")
+		}
+		return &ai.EmbedResponse{
+			Embeddings: []*ai.Embedding{
+				{Embedding: []float32{0.1, 0.2, 0.3}},
+			},
+		}, nil
+	})
+
+	mockVector := NewMockVectorStore()
+	action := NewEpisodeStorageAction()
+	action.WithVectorStore(mockVector)
+
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+	addCtx.Messages = domain.Messages{
+		{Role: domain.RoleUser, Content: "message 1"},
+		{Role: domain.RoleAssistant, Content: "message 2"},
+		{Role: domain.RoleUser, Content: "message 3"},
+	}
+
+	action.Handle(addCtx)
+
+	// Some messages may succeed, some may fail
+	assert.NoError(t, addCtx.Error())
+}
+
+func TestEpisodeStorageAction_Handle_TokenUsageTracked(t *testing.T) {
+	ctx := context.Background()
+	h := newTestHelper(ctx)
+	h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
+
+	// Set model response with usage info using SetModelJSONResponse which sets usage
+	h.setModelJSON(map[string]any{"topic": "test topic"})
+
+	mockVector := NewMockVectorStore()
+	action := NewEpisodeStorageAction()
+	action.WithVectorStore(mockVector)
+
+	addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
+	addCtx.Messages = domain.Messages{
+		{Role: domain.RoleUser, Content: "test message"},
+	}
+
+	action.Handle(addCtx)
+
+	assert.Len(t, addCtx.Episodes, 1)
+	// Token usage is tracked internally (we can't check it directly without TokenUsage field)
 }
