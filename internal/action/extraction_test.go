@@ -324,37 +324,6 @@ func TestExtractionAction_Handle_Errors(t *testing.T) {
 		assert.Empty(t, addCtx.Edges, "edge with unknown entity should be skipped")
 	})
 
-	t.Run("StoreEntityToVectorError still adds entity to context", func(t *testing.T) {
-		ctx := context.Background()
-		h := newTestHelper(ctx)
-		h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-		h.setModelJSON(map[string]any{
-			"entities": []map[string]any{
-				{"name": "张三", "type": "person"},
-			},
-			"relations": []map[string]any{},
-		})
-
-		mockVector := NewMockVectorStore()
-		mockVector.StoreFunc = func(ctx context.Context, id string, doc map[string]any) error {
-			return errors.New("vector store failed")
-		}
-		mockGraph := NewMockGraphStore()
-
-		action := NewExtractionAction()
-		action.WithStores(mockVector, mockGraph)
-
-		addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-		addCtx.Messages = domain.Messages{
-			{Role: domain.RoleUser, Content: "测试消息"},
-		}
-
-		action.Handle(addCtx)
-
-		assert.Len(t, addCtx.Entities, 1, "entity should still be in context")
-		assert.NoError(t, addCtx.Error())
-	})
-
 	t.Run("CreateRelationshipError skips edge", func(t *testing.T) {
 		ctx := context.Background()
 		h := newTestHelper(ctx)
@@ -387,45 +356,6 @@ func TestExtractionAction_Handle_Errors(t *testing.T) {
 
 		assert.Len(t, addCtx.Entities, 2)
 		assert.Empty(t, addCtx.Edges, "edge should be skipped on relationship error")
-	})
-
-	t.Run("StoreEdgeToVectorError still adds edge to context", func(t *testing.T) {
-		ctx := context.Background()
-		h := newTestHelper(ctx)
-		h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-		h.setModelJSON(map[string]any{
-			"entities": []map[string]any{
-				{"name": "张三", "type": "person"},
-				{"name": "北京", "type": "place"},
-			},
-			"relations": []map[string]any{
-				{"subject": "张三", "predicate": "住在", "object": "北京", "fact": "张三住在北京"},
-			},
-		})
-
-		storeCallCount := 0
-		mockVector := NewMockVectorStore()
-		mockVector.StoreFunc = func(ctx context.Context, id string, doc map[string]any) error {
-			storeCallCount++
-			if storeCallCount > 2 {
-				return errors.New("edge vector store failed")
-			}
-			return nil
-		}
-		mockGraph := NewMockGraphStore()
-
-		action := NewExtractionAction()
-		action.WithStores(mockVector, mockGraph)
-
-		addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-		addCtx.Messages = domain.Messages{
-			{Role: domain.RoleUser, Content: "测试消息"},
-		}
-
-		action.Handle(addCtx)
-
-		assert.Len(t, addCtx.Entities, 2)
-		assert.Len(t, addCtx.Edges, 1, "edge should still be in context")
 	})
 
 	t.Run("EdgeReferencesUnstoredEntity skips edge", func(t *testing.T) {

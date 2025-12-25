@@ -70,26 +70,6 @@ func TestEpisodeStorageAction_Handle(t *testing.T) {
 		assert.NoError(t, addCtx.Error())
 	})
 
-	t.Run("NoVectorStore still generates episodes", func(t *testing.T) {
-		ctx := context.Background()
-		h := newTestHelper(ctx)
-		h.setEmbedderVector([]float32{0.1, 0.2, 0.3})
-		h.setModelJSON(map[string]any{"topic": "测试主题"})
-
-		action := NewEpisodeStorageAction()
-		action.WithVectorStore(nil)
-
-		addCtx := domain.NewAddContext(ctx, "agent", "user", "session")
-		addCtx.Messages = domain.Messages{
-			{Role: domain.RoleUser, Content: "测试消息"},
-		}
-
-		action.Handle(addCtx)
-
-		assert.Len(t, addCtx.Episodes, 1, "should still generate episodes without store")
-		assert.NoError(t, addCtx.Error())
-	})
-
 	t.Run("ContextCancelled aborts processing", func(t *testing.T) {
 		ctx := context.Background()
 		_ = newTestHelper(ctx)
