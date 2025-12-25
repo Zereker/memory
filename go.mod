@@ -2,8 +2,6 @@ module github.com/Zereker/memory
 
 go 1.24.1
 
-toolchain go1.24.7
-
 require (
 	github.com/IBM/sarama v1.46.3
 	github.com/firebase/genkit/go v1.2.0
